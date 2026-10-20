@@ -85,4 +85,19 @@ describe('GET /galaxy/:systemId', () => {
     expect(res.status).toBe(400);
     expect(fetchStarSystemById).not.toHaveBeenCalled();
   });
+
+  it('returns 400 for a system id with trailing characters instead of silently truncating it', async () => {
+    const res = await request(buildApp()).get('/galaxy/12abc');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid system ID' });
+    expect(fetchStarSystemById).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a system id too large for the INTEGER column', async () => {
+    const res = await request(buildApp()).get('/galaxy/2147483648');
+
+    expect(res.status).toBe(400);
+    expect(fetchStarSystemById).not.toHaveBeenCalled();
+  });
 });

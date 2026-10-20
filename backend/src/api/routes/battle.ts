@@ -1,11 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { Pool } from 'pg';
 import { fetchRecentBattles, fetchBattleById } from '../../db/queries';
+import { parseIntegerId, validateParam } from '../validators';
 
 export function createBattleRouter(db: Pool): Router {
   const router = Router();
 
   router.get('/', fetchBattlesList(db));
+  router.param('battleId', validateParam(parseBattleId));
   router.get('/:battleId', fetchSingleBattle(db));
 
   return router;
@@ -52,9 +54,5 @@ function parsePaginationParams(query: Record<string, any>): { limit: number; off
 
 /** Parses and validates a battle ID from a route param */
 function parseBattleId(raw: string): number {
-  const id = parseInt(raw, 10);
-  if (isNaN(id) || id < 0) {
-    throw Object.assign(new Error('Invalid battle ID'), { statusCode: 400 });
-  }
-  return id;
+  return parseIntegerId(raw, 'battle ID');
 }

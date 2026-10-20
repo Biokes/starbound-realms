@@ -19,6 +19,7 @@ import { GalaxyEmptyState } from './GalaxyEmptyState';
 import { LoadingIndicator } from './LoadingIndicator';
 import { useNotification } from './Notifications';
 import { getStarboundClient } from '../lib/starboundClient';
+import { readStoredSystemId, storeSystemId, clearStoredSystemId } from '../lib/selectedSystemStorage';
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,29 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
   const selectSystem = useCallback((systemId: number, trigger: SVGRectElement) => {
     selectedSystemTriggerRef.current = { element: trigger, systemId };
     setSelectedSystemId(systemId);
+    storeSystemId(systemId);
   }, []);
+
+  const clearSelection = useCallback(() => {
+    setSelectedSystemId(null);
+    clearStoredSystemId();
+  }, []);
+
+  // Restores the last-selected system once the galaxy first loads (#133). Runs
+  // only once, so a later refetch never reopens a drawer the player has closed.
+  const restoredSelectionRef = useRef(false);
+  useEffect(() => {
+    if (restoredSelectionRef.current || galaxyLoading || galaxyError) return;
+    restoredSelectionRef.current = true;
+
+    const storedId = readStoredSystemId();
+    if (storedId === null) return;
+    if (systems.some((s) => s.systemId === storedId)) {
+      setSelectedSystemId(storedId);
+    } else {
+      clearStoredSystemId();
+    }
+  }, [galaxyLoading, galaxyError, systems]);
 
   useEffect(() => {
     const trigger = selectedSystemTriggerRef.current;
@@ -96,12 +119,12 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
         const galaxy = new GalaxyClient(client);
         await galaxy.claimSystem(walletAddress, systemId, (xdr) => signTransaction(xdr, client.networkPassphrase));
         await refetchGalaxy();
-        setSelectedSystemId(null);
+        clearSelection();
       } catch (err) {
         setClaimError(err instanceof Error ? err.message : String(err));
       }
     },
-    [walletAddress, signTransaction, refetchGalaxy]
+    [walletAddress, signTransaction, refetchGalaxy, clearSelection]
   );
 
   const { fleet, isLoading: fleetLoading, error: fleetError, refetch: refetchFleet } =
@@ -153,12 +176,12 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
           signTransaction(xdr, client.networkPassphrase)
         );
         await refetchFleet();
-        setSelectedSystemId(null);
+        clearSelection();
       } catch (err) {
         setMoveError(err instanceof Error ? err.message : String(err));
       }
     },
-    [walletAddress, signTransaction, refetchFleet]
+    [walletAddress, signTransaction, refetchFleet, clearSelection]
   );
 
   const [attackError, setAttackError] = useState<string | null>(null);
@@ -185,12 +208,12 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
             : `Defeat. Your fleet was repelled from system ${systemId} after ${battle.rounds} round(s).`
         );
         await Promise.all([refetchFleet(), refetchGalaxy()]);
-        setSelectedSystemId(null);
+        clearSelection();
       } catch (err) {
         setAttackError(err instanceof Error ? err.message : String(err));
       }
     },
-    [walletAddress, systems, signTransaction, refetchFleet, refetchGalaxy]
+    [walletAddress, systems, signTransaction, refetchFleet, refetchGalaxy, clearSelection]
   );
 
   useNotification(trustlineError);
@@ -228,7 +251,7 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
               system={selectedSystem}
               walletAddress={walletAddress}
               fleet={fleet}
-              onClose={() => setSelectedSystemId(null)}
+              onClose={clearSelection}
               onClaim={claimSystem}
               onMoveFleet={moveFleet}
               onAttack={attackSystem}

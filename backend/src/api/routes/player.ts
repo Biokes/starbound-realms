@@ -5,10 +5,12 @@ import {
   fetchBattlesByPlayer,
   fetchAllianceByPlayer,
 } from '../../db/queries';
+import { parseStellarAddress, validateParam } from '../validators';
 
 export function createPlayerRouter(db: Pool): Router {
   const router = Router();
 
+  router.param('address', validateParam(parseStellarAddress));
   router.get('/:address', fetchPlayerProfile(db));
   router.get('/:address/battles', fetchPlayerBattleHistory(db));
   router.get('/:address/alliance', fetchPlayerAlliance(db));
@@ -20,7 +22,7 @@ export function createPlayerRouter(db: Pool): Router {
 function fetchPlayerProfile(db: Pool) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const address = validateStellarAddress(req.params.address);
+      const address = parseStellarAddress(req.params.address);
       const player = await fetchPlayerByAddress(db, address);
 
       if (!player) {
@@ -39,7 +41,7 @@ function fetchPlayerProfile(db: Pool) {
 function fetchPlayerBattleHistory(db: Pool) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const address = validateStellarAddress(req.params.address);
+      const address = parseStellarAddress(req.params.address);
       const battles = await fetchBattlesByPlayer(db, address);
       res.json({ battles });
     } catch (err) {
@@ -52,7 +54,7 @@ function fetchPlayerBattleHistory(db: Pool) {
 function fetchPlayerAlliance(db: Pool) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const address = validateStellarAddress(req.params.address);
+      const address = parseStellarAddress(req.params.address);
       const alliance = await fetchAllianceByPlayer(db, address);
 
       if (!alliance) {
@@ -65,12 +67,4 @@ function fetchPlayerAlliance(db: Pool) {
       next(err);
     }
   };
-}
-
-/** Validates that a string looks like a Stellar address (G...) */
-function validateStellarAddress(address: string): string {
-  if (!address.startsWith('G') || address.length !== 56) {
-    throw Object.assign(new Error('Invalid Stellar address'), { statusCode: 400 });
-  }
-  return address;
 }
