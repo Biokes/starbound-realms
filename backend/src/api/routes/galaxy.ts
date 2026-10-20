@@ -1,11 +1,13 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { Pool } from 'pg';
 import { fetchAllStarSystems, fetchStarSystemById } from '../../db/queries';
+import { MAX_INTEGER_ID, parseIntegerId, validateParam } from '../validators';
 
 export function createGalaxyRouter(db: Pool): Router {
   const router = Router();
 
   router.get('/', fetchGalaxyGrid(db));
+  router.param('systemId', validateParam(parseSystemId));
   router.get('/:systemId', fetchSingleSystem(db));
 
   return router;
@@ -65,9 +67,5 @@ function fetchSingleSystem(db: Pool) {
 
 /** Parses and validates a system ID from a route param */
 function parseSystemId(raw: string): number {
-  const id = parseInt(raw, 10);
-  if (isNaN(id) || id < 0) {
-    throw Object.assign(new Error('Invalid system ID'), { statusCode: 400 });
-  }
-  return id;
+  return parseIntegerId(raw, 'system ID', MAX_INTEGER_ID);
 }

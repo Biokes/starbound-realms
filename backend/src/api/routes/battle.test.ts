@@ -107,6 +107,21 @@ describe('GET /battles/:battleId', () => {
     expect(fetchBattleById).not.toHaveBeenCalled();
   });
 
+  it('returns 400 for a battle ID with trailing characters instead of silently truncating it', async () => {
+    const res = await request(buildApp()).get('/battles/7x');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid battle ID' });
+    expect(fetchBattleById).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a battle ID beyond the safe integer range without querying the database', async () => {
+    const res = await request(buildApp()).get('/battles/99999999999999999999');
+
+    expect(res.status).toBe(400);
+    expect(fetchBattleById).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when the battle does not exist', async () => {
     vi.mocked(fetchBattleById).mockResolvedValue(null);
 

@@ -43,6 +43,15 @@ describe('GET /player/:address', () => {
     expect(fetchPlayerByAddress).not.toHaveBeenCalled();
   });
 
+  it('returns 400 for an address with characters outside the Stellar base32 alphabet', async () => {
+    // "0" is not in the StrKey alphabet (A–Z, 2–7), so the right length still fails.
+    const res = await request(buildApp()).get(`/player/G${'0'.repeat(55)}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid Stellar address' });
+    expect(fetchPlayerByAddress).not.toHaveBeenCalled();
+  });
+
   it('returns 400 for an address that is the right prefix but wrong length', async () => {
     const res = await request(buildApp()).get('/player/GSHORT');
 
