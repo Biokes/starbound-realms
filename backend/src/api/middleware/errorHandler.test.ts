@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 import { errorHandler, AppError } from './errorHandler';
+import { log } from '../../logger';
+
+vi.mock('../../logger', () => ({ log: vi.fn() }));
 
 function buildApp(error: AppError) {
   const app = express();
@@ -11,7 +14,7 @@ function buildApp(error: AppError) {
 }
 
 beforeEach(() => {
-  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.mocked(log).mockClear();
 });
 
 afterEach(() => {
@@ -46,7 +49,7 @@ describe('errorHandler', () => {
   it('logs the status code and message to the console', async () => {
     await request(buildApp(Object.assign(new Error('Not here'), { statusCode: 404 }))).get('/boom');
 
-    expect(console.error).toHaveBeenCalledWith('[Error] 404 — Not here');
+    expect(log).toHaveBeenCalledWith('error', 'Not here', { statusCode: 404, requestId: undefined });
   });
 
   it('omits the stack trace outside development', async () => {

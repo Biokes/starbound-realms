@@ -57,7 +57,7 @@ vi.mock('./db/queries', () => ({
 
 vi.mock('pg', () => ({
   Pool: vi.fn(function () {
-    return {};
+    return { query: vi.fn(() => Promise.resolve({ rows: [{ '?column?': 1 }] })) };
   }),
 }));
 
@@ -94,6 +94,8 @@ async function loadApp() {
 }
 
 beforeEach(() => {
+  vi.stubEnv('SOROBAN_RPC_URL', 'http://rpc.test');
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true })));
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
 });
