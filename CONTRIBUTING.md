@@ -97,6 +97,24 @@ All contributions must follow our engineering guidelines:
 
 Read the full guide: [`docs/engineering-guidelines.md`](docs/engineering-guidelines.md)
 
+## GitHub labels
+
+Issues use a small, consistent label vocabulary. Apply one area label and,
+when useful, one type or priority label:
+
+| Category | Labels |
+|---|---|
+| Area | `contracts`, `backend`, `frontend`, `sdk`, `docs`, `devops` |
+| Type | `bug`, `feature`, `documentation`, `testing` |
+| Priority | `priority:high`, `priority:medium`, `priority:low` |
+| Contributor guidance | `good first issue`, `help wanted` |
+
+Area labels identify the code owner; type labels describe the change. Keep
+labels lowercase and do not add duplicates or synonyms. Closed issues should
+be explained in a comment instead of receiving administrative labels such as
+`invalid`, `duplicate`, or `wontfix`; those labels are intentionally not part
+of the project vocabulary.
+
 ---
 
 ## Pull Request Guidelines
