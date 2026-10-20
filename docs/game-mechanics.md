@@ -118,4 +118,4 @@ There is no hard win condition — the galaxy is persistent. Players compete for
 - **Alliance system** — players form alliances, share system defense
 - **System upgrades** — spend Plasma to increase a system's defense or yield
 - **Fleet specializations** — unit type bonuses against specific enemies
-- **Seasonal resets** — optional governance-triggered galaxy resets
+- **Seasonal resets** — optional governance-triggered galaxy resets (proposal: [seasonal-reset-design.md](seasonal-reset-design.md))
