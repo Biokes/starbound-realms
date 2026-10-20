@@ -56,6 +56,23 @@ Full setup instructions: [`docs/contributing.md`](docs/contributing.md)
 
 ---
 
+## End-to-End Tests
+
+The Playwright suite in `frontend/e2e/` runs the real app in headless Chromium. It needs no backend, wallet, or network: the backend API and the Freighter extension are mocked inside the test.
+
+```bash
+# The frontend imports the built SDK, so build it first
+cd sdk && pnpm run build
+
+cd ../frontend
+pnpm exec playwright install chromium   # one-time browser download
+pnpm test:e2e
+```
+
+Playwright starts the Vite dev server on port 5173 itself, and reuses one that is already running locally. CI runs the same suite in the `E2E (Playwright)` job.
+
+---
+
 ## Branch Naming
 
 | Type | Pattern |
