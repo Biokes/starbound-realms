@@ -6,6 +6,7 @@ members = [
     "contracts/resources",
     "contracts/fleet",
     "contracts/battle",
+    "contracts/integration-tests",
 ]
 
 [profile.release]

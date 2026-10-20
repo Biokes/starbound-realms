@@ -1,0 +1,15 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Test-only crate: it holds no contract code, just tests that drive all four
+# contracts together. The contracts are dev-dependencies, which need the
+# `rlib` crate type they expose for this (#127).
+[dev-dependencies]
+soroban-sdk = { version = "22.0.0", features = ["testutils"] }
+galaxy-map = { path = "../galaxy-map" }
+resources = { path = "../resources" }
+fleet = { path = "../fleet" }
+battle = { path = "../battle" }
