@@ -164,6 +164,26 @@ export class StarboundClient {
   }
 
   /**
+   * Returns network information for this client (#134).
+   *
+   * @returns Object containing network name, RPC URL, and network passphrase.
+   */
+  getNetworkInfo(): { network: string; rpcUrl: string; networkPassphrase: string } {
+    const network =
+      this.networkPassphrase === Networks.TESTNET
+        ? 'testnet'
+        : this.networkPassphrase === Networks.PUBLIC
+          ? 'mainnet'
+          : 'unknown';
+
+    return {
+      network,
+      rpcUrl: (this.server as any).serverURL?.toString() ?? 'unknown',
+      networkPassphrase: this.networkPassphrase,
+    };
+  }
+
+  /**
    * Simulates a read-only contract call and returns its decoded native result.
    * Never submits a transaction — no account needs to be funded.
    *

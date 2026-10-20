@@ -1,0 +1,21 @@
+# CODEOWNERS file for starbound-realms (#112)
+# PRs touching each area automatically request the right reviewer.
+
+# Contracts
+/contracts/ @OlaGreat
+
+# Frontend
+/frontend/ @OlaGreat
+
+# Backend
+/backend/ @OlaGreat
+
+# SDK
+/sdk/ @OlaGreat
+
+# CI/CD
+/.github/ @OlaGreat
+
+# Documentation
+/docs/ @OlaGreat
+*.md @OlaGreat
