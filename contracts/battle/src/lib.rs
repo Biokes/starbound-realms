@@ -293,7 +293,7 @@ fn run_combat_rounds(
     let mut rounds = 0;
 
     while !has_combat_ended(rounds, &attacker_fleet, &defender_fleet) {
-        let attacker_power = calculate_fleet_attack(&attacker_fleet);
+        let attacker_power = calculate_fleet_attack(&attacker_fleet, &defender_fleet);
         let defender_power = calculate_fleet_defense(&defender_fleet) + system_defense_rating;
 
         let attacker_roll = roll_power(env, attacker_power);
@@ -324,14 +324,23 @@ fn did_attacker_win(attacker_final: &Fleet, defender_final: &Fleet, system_defen
     if is_fleet_empty(defender_final) {
         return true;
     }
-    let attacker_power = calculate_fleet_attack(attacker_final);
+    let attacker_power = calculate_fleet_attack(attacker_final, defender_final);
     let defender_power = calculate_fleet_defense(defender_final) + system_defense_rating;
     !did_attacker_lose_round(attacker_power, defender_power)
 }
 
-/// Returns the fleet's total attack power (sum of each unit's attack stat).
-fn calculate_fleet_attack(fleet: &Fleet) -> u32 {
-    fleet.scouts * 2 + fleet.fighters * 5 + fleet.cruisers * 12 + fleet.dreadnoughts * 30
+/// Returns the attacker's power against a specific defender. Each unit type
+/// counters one other type (Scout > Dreadnought > Cruiser > Fighter > Scout);
+/// a unit's attack is boosted 50% when the defender fleet contains its counter.
+fn calculate_fleet_attack(attacker: &Fleet, defender: &Fleet) -> u32 {
+    let boosted = |count: u32, attack: u32, counter_present: bool| {
+        let power = count * attack;
+        if counter_present { power * 3 / 2 } else { power }
+    };
+    boosted(attacker.scouts, 2, defender.dreadnoughts > 0)
+        + boosted(attacker.fighters, 5, defender.scouts > 0)
+        + boosted(attacker.cruisers, 12, defender.fighters > 0)
+        + boosted(attacker.dreadnoughts, 30, defender.cruisers > 0)
 }
 
 /// Returns the fleet's total defense power (sum of each unit's defense stat).
@@ -515,6 +524,33 @@ mod tests {
     #[test]
     fn a_tied_roll_favors_the_defender() {
         assert!(did_attacker_lose_round(7, 7));
+    }
+
+    // ── unit type matchups ────────────────────────────────────────────────────
+
+    #[test]
+    fn a_unit_gets_the_matchup_bonus_when_the_defender_has_its_counter() {
+        // One Scout (attack 2) against Dreadnoughts (its counter): 2 * 3/2 = 3.
+        let scout = fleet_of(1, 0, 0, 0);
+        let dreadnought = fleet_of(0, 0, 0, 1);
+        assert_eq!(calculate_fleet_attack(&scout, &dreadnought), 3);
+    }
+
+    #[test]
+    fn a_unit_gets_no_bonus_without_its_counter() {
+        let scout = fleet_of(2, 0, 0, 0);
+        let cruiser = fleet_of(0, 0, 1, 0);
+        assert_eq!(calculate_fleet_attack(&scout, &cruiser), 4);
+    }
+
+    #[test]
+    fn matchup_bonus_applies_per_unit_type() {
+        // Fighters counter Scouts, Cruisers counter Fighters; the defender has both.
+        let attacker = fleet_of(0, 2, 1, 0);
+        let defender = fleet_of(1, 1, 0, 0);
+        // Fighters: 2 * 5 = 10, Scouts present -> 15.
+        // Cruisers: 1 * 12 = 12, Fighters present -> 18.
+        assert_eq!(calculate_fleet_attack(&attacker, &defender), 33);
     }
 
     // ── resolve_battle ────────────────────────────────────────────────────────

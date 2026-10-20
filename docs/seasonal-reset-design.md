@@ -65,6 +65,14 @@ result.
 
 ---
 
+## Unit type matchups (proposed, issue #90)
+
+Implemented in `contracts/battle` as a first step, pending agreement:
+
+- Counter cycle: Scout beats Dreadnought, Dreadnought beats Cruiser, Cruiser beats Fighter, Fighter beats Scout.
+- A unit's attack is multiplied by 1.5 when the defender fleet contains its counter type.
+- Only attack is modified. Defense is unchanged, so the bonus is one-sided by design, to keep the change minimal.
+
 ## Alternatives considered
 
 - **Redeploy the contracts for each season.** Simple, but it loses battle history and every player's

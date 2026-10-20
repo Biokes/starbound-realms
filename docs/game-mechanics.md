@@ -88,7 +88,9 @@ a fleet; it never calls into the battle contract.)
 
 **Resolution algorithm:**
 
-1. Load attacker's total attack power (sum of all unit attack values)
+1. Load attacker's total attack power (sum of all unit attack values). Each unit type counters one other type
+   (Scout → Dreadnought → Cruiser → Fighter → Scout): a unit's attack is boosted 50% while the defender fleet
+   contains its counter type. This matchup rule is proposed, see [seasonal-reset-design.md](seasonal-reset-design.md)
 2. Load defender's total defense power (sum of unit defense values + system `defense_rating`)
 3. Run combat rounds using Soroban `Prng` (seeded per ledger — verifiable, not manipulable):
    - Each round both sides roll
