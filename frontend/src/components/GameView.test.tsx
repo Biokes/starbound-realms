@@ -168,6 +168,7 @@ vi.mock('./BattleLog', () => ({
 
 import { GameView } from './GameView';
 import { NotificationProvider } from './Notifications';
+import { SELECTED_SYSTEM_STORAGE_KEY } from '../lib/selectedSystemStorage';
 
 function renderGameView() {
   return render(
@@ -229,6 +230,7 @@ beforeEach(() => {
   mockRefetchGalaxy.mockResolvedValue(undefined);
   mockRefetchFleet.mockResolvedValue(undefined);
   mockRefetchBalances.mockResolvedValue(undefined);
+  window.localStorage.clear();
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -343,6 +345,64 @@ describe('GameView', () => {
 
     fireEvent.click(screen.getByText('Close'));
     expect(screen.queryByTestId('star-system')).not.toBeInTheDocument();
+  });
+
+  // ── Selection persistence (#133) ───────────────────────────────────────────
+
+  it('persists the system id when a system is selected', () => {
+    galaxyState.systems = [makeSystem({ systemId: 42 })];
+
+    renderGameView();
+    fireEvent.click(screen.getByText('Select System 42'));
+
+    expect(window.localStorage.getItem(SELECTED_SYSTEM_STORAGE_KEY)).toBe('42');
+  });
+
+  it('restores the last-selected system once the galaxy has loaded', () => {
+    window.localStorage.setItem(SELECTED_SYSTEM_STORAGE_KEY, '42');
+    galaxyState.systems = [makeSystem({ systemId: 42 })];
+
+    renderGameView();
+
+    expect(screen.getByTestId('star-system')).toHaveTextContent('System 42');
+  });
+
+  it('does not restore the selection while the galaxy is still loading', () => {
+    window.localStorage.setItem(SELECTED_SYSTEM_STORAGE_KEY, '42');
+    galaxyState.isLoading = true;
+    galaxyState.systems = [makeSystem({ systemId: 42 })];
+
+    const { rerender } = renderGameView();
+    expect(screen.queryByTestId('star-system')).not.toBeInTheDocument();
+
+    galaxyState.isLoading = false;
+    rerender(
+      <NotificationProvider>
+        <GameView {...DEFAULT_PROPS} />
+      </NotificationProvider>
+    );
+
+    expect(screen.getByTestId('star-system')).toHaveTextContent('System 42');
+  });
+
+  it('drops a stored selection whose system no longer exists', () => {
+    window.localStorage.setItem(SELECTED_SYSTEM_STORAGE_KEY, '99');
+    galaxyState.systems = [makeSystem({ systemId: 42 })];
+
+    renderGameView();
+
+    expect(screen.queryByTestId('star-system')).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(SELECTED_SYSTEM_STORAGE_KEY)).toBeNull();
+  });
+
+  it('forgets the stored selection when the drawer is closed', () => {
+    window.localStorage.setItem(SELECTED_SYSTEM_STORAGE_KEY, '42');
+    galaxyState.systems = [makeSystem({ systemId: 42 })];
+
+    renderGameView();
+    fireEvent.click(screen.getByText('Close'));
+
+    expect(window.localStorage.getItem(SELECTED_SYSTEM_STORAGE_KEY)).toBeNull();
   });
 
   it('returns focus to the cell that opened the drawer when it closes', async () => {
