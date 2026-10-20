@@ -127,6 +127,9 @@ jobs:
         with:
           workspaces: ". -> target"
 
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
       - name: Clippy (#96)
         run: cargo clippy --all-targets -- -D warnings
 

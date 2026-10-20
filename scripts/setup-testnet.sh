@@ -156,7 +156,12 @@ set_asset_admin_if_needed() {
 
   echo "🔐 Handing $name admin to the resources contract..."
   invoke_contract "$asset_id" set_admin --new_admin "$new_admin" >/dev/null
-  echo "✅ $name admin handed to resources"
+  current=$(invoke_contract "$asset_id" admin 2>/dev/null | tr -d '"[:space:]' || true)
+  if [[ "$current" != "$new_admin" ]]; then
+    echo "❌ $name admin handoff could not be verified (expected $new_admin, got ${current:-unknown})" >&2
+    exit 1
+  fi
+  echo "✅ $name admin handed to resources and verified: $current"
 }
 
 # ── Step 10: Write contract IDs and config to .env files ─────────────────────
