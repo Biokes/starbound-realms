@@ -10,6 +10,31 @@
 
 ---
 
+## 🚀 Live on Testnet
+
+The game is deployed and running on Stellar testnet (deployed 12 October 2026, grid size 8×8). You can inspect every contract directly on [Stellar Expert](https://stellar.expert/explorer/testnet):
+
+| Contract | Address | Explorer |
+|---|---|---|
+| `galaxy-map` | `CBT7KWIY6VGJ7UO4H3EEEJEFEJGFYKBRMORLP6ZZHDIGJNWIIBERQHCD` | [View ↗](https://stellar.expert/explorer/testnet/contract/CBT7KWIY6VGJ7UO4H3EEEJEFEJGFYKBRMORLP6ZZHDIGJNWIIBERQHCD) |
+| `resources` | `CCXFTWABMR2464IUGYSCSTHJSLRQY237BXCQLDOOYC7TZR7XGLH47FSL` | [View ↗](https://stellar.expert/explorer/testnet/contract/CCXFTWABMR2464IUGYSCSTHJSLRQY237BXCQLDOOYC7TZR7XGLH47FSL) |
+| `fleet` | `CDN4HG6MEGVEON5OXLNBXVISLYA47EFDFI6DWBHS7GNLONGGNBMVXJNF` | [View ↗](https://stellar.expert/explorer/testnet/contract/CDN4HG6MEGVEON5OXLNBXVISLYA47EFDFI6DWBHS7GNLONGGNBMVXJNF) |
+| `battle` | `CDOFURGGF2CCGEKUSWFRMNVA7T25VGOKCQDNJYEP52WYQJUNC65DJXCU` | [View ↗](https://stellar.expert/explorer/testnet/contract/CDOFURGGF2CCGEKUSWFRMNVA7T25VGOKCQDNJYEP52WYQJUNC65DJXCU) |
+
+Resource tokens (Stellar Asset Contracts, administered by the `resources` contract so mining only needs the player's signature):
+
+| Asset | Symbol | Contract Address |
+|---|---|---|
+| Iron | `IRON` | `CDOA5MBXJUGWT6AJL5AUFSO47VVRGUDWG7AQS2VXJ3G6HMRKUBBLMU33` |
+| Energy | `NRGY` | `CADVDTZWE2XU6YZZLMDZUDV22DCENAJDTZWAJJUJEHVHR5CJAKZ5WUZF` |
+| Plasma | `PLSM` | `CDCUCH2UXBHDASSXN2MTW3L4P3ZDL4UAL2YYFI3RI4A6ARACMMOBU3AD` |
+
+Network: `Test SDF Network ; September 2015` — RPC: `https://soroban-testnet.stellar.org`
+
+To use these addresses locally, copy `.env.testnet` into your `backend/.env` and `frontend/.env`.
+
+---
+
 ## What is Starbound Realms?
 
 Starbound Realms is a turn-based, on-chain strategy game where players compete for control of a procedurally generated galaxy. Every action — claiming a star system, mining resources, building a fleet, initiating a battle — is a transaction on the Stellar blockchain, executed by Soroban smart contracts.
@@ -256,7 +281,7 @@ Read the full [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 - [ ] Frontend — galaxy map renderer
 - [ ] Frontend — fleet builder UI
 - [ ] Frontend — battle log & wallet integration
-- [ ] Testnet deployment
+- [x] Testnet deployment — live, see [Live on Testnet](#-live-on-testnet) above
 - [ ] Mainnet launch
 
 ---
