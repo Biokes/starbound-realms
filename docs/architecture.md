@@ -205,6 +205,106 @@ VITE_CONTRACT_BATTLE=C...
 
 ---
 
+## Trustlines: Mining Setup Flow
+
+This section documents a Stellar-specific requirement that every new contributor should understand
+before touching resource, mining, or wallet-connection code. Missing this caused real debugging
+time during the October 2026 testnet cycle.
+
+### Why classic assets need trustlines
+
+The three in-game resources — Iron (`IRON`), Energy (`NRGY`), and Plasma (`PLSM`) — are real Stellar
+classic assets, not synthetic Soroban-native tokens. In Stellar's classic account model, an account
+cannot receive an asset it hasn't explicitly opted in to. That opt-in is called a **trustline**. If the
+`resources` contract tries to mint to a player who has no trustline for `IRON`, the transaction fails
+with `"trustline entry is missing"` — the contract can do nothing about it.
+
+This is not a bug or a workaround; it's the intended Stellar model. It gives players explicit control
+over what their account holds and prevents spam assets from appearing in wallets.
+
+### The three SDK methods
+
+All trustline logic lives in `sdk/src/resources.ts` inside `ResourcesClient`:
+
+#### `buildTrustlineKey(playerAddress, assetCode, issuer) → xdr.LedgerKey`
+
+Builds an `xdr.LedgerKey` of type `trustline` for one asset. Used internally to check the ledger in a
+single batch request.
+
+#### `findMissingTrustlines(playerAddress, issuer) → Promise<string[]>`
+
+Queries `getLedgerEntries` with all three trustline keys in **one request** (not three separate calls).
+Returns only the asset codes (`'IRON'`, `'NRGY'`, `'PLSM'`) whose trustline does not exist yet on the
+ledger. Returns an empty array if all three are already established.
+
+```ts
+// Internally builds three ledger keys and checks them in one round-trip:
+const keys = RESOURCE_ASSET_CODES.map((code) => buildTrustlineKey(player, code, issuer));
+const { entries } = await server.getLedgerEntries(...keys);
+// diff keys vs entries to find the missing ones
+```
+
+#### `establishTrustlines(playerAddress, issuer, sign) → Promise<void>`
+
+Calls `findMissingTrustlines` first. If the result is empty, returns immediately — it is safe to call on
+every wallet connect without generating a signature prompt when nothing is needed. Otherwise it builds one
+classic transaction containing a `ChangeTrust` operation for each missing asset and submits it. The player
+signs exactly once regardless of how many trustlines are missing.
+
+```ts
+// Only called when missing.length > 0:
+await client.submitClassicTransaction({
+  sourceAddress: playerAddress,
+  operations: missing.map((code) => Operation.changeTrust({ asset: new Asset(code, issuer) })),
+  sign,
+});
+```
+
+### Where this is wired into the UI
+
+1. **`frontend/src/hooks/useTrustlines.ts`**
+   - Runs `findMissingTrustlines` automatically when `walletAddress` changes (on wallet connect).
+   - Exposes `{ missing, isLoading, isSettingUp, setUpTrustlines }` to its callers.
+   - Never calls `establishTrustlines` on its own — the player must explicitly trigger `setUpTrustlines`.
+
+2. **`frontend/src/components/ResourceSetupBanner.tsx`**
+   - Renders only when `missing` is non-empty.
+   - Shows a yellow banner: `"Your wallet can't hold IRON, NRGY, PLSM yet."` with a **Set up resources**
+     button.
+   - The button calls `setUpTrustlines`, which calls `establishTrustlines` in the SDK, which requests one
+     Freighter signature for the whole batch.
+   - After the transaction is confirmed, `useTrustlines` re-checks the ledger and sets `missing` to `[]`,
+     which hides the banner.
+
+### Sequence diagram
+
+```
+wallet connects
+  → useTrustlines detects walletAddress change
+  → findMissingTrustlines() → getLedgerEntries (one request)
+  → missing = ['IRON', 'NRGY', 'PLSM']   (or subset, or [])
+
+if missing is non-empty:
+  → ResourceSetupBanner renders
+  → player clicks "Set up resources"
+  → setUpTrustlines() → establishTrustlines()
+  → one ChangeTrust tx, player signs once in Freighter
+  → tx confirmed on Stellar testnet
+  → findMissingTrustlines() re-run → missing = []
+  → banner disappears, mining and resource receipt work
+```
+
+### Common mistakes to avoid
+
+- **Do not remove the banner or skip `findMissingTrustlines`** — the missing trustline causes a silent
+  on-chain failure; the player just never receives resources.
+- **Do not call `establishTrustlines` automatically on wallet connect** — it would prompt for a signature
+  without player intent. Always gate it behind a UI action.
+- **Do not add a separate trustline check per asset** — `findMissingTrustlines` batches all three into one
+  `getLedgerEntries` call deliberately. Splitting it into three calls triples round-trips for no benefit.
+
+---
+
 ## Security Considerations
 
 - No admin keys in contracts
