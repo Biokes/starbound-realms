@@ -28,6 +28,11 @@ export interface StartIndexerOptions {
   contractIds: string[];
   pollIntervalMs: number;
   onError?: (err: unknown) => void;
+  /**
+   * Permits a plain-http RPC URL. Only for local nodes and test doubles —
+   * the stellar-sdk refuses non-https endpoints by default.
+   */
+  allowHttp?: boolean;
 }
 
 /**
@@ -35,7 +40,7 @@ export interface StartIndexerOptions {
  * each cycle's cursor written back so it survives a restart.
  */
 export async function startIndexer(options: StartIndexerOptions): Promise<EventListenerHandle> {
-  const server = new rpc.Server(options.rpcUrl);
+  const server = new rpc.Server(options.rpcUrl, { allowHttp: options.allowHttp ?? false });
   const startLedger = await fetchIndexerCursor(options.db);
 
   return startEventListener({
