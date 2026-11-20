@@ -5,9 +5,10 @@ import request from 'supertest';
 vi.mock('../../db/queries', () => ({
   fetchRecentBattles: vi.fn(),
   fetchBattleById: vi.fn(),
+  fetchBattleReplay: vi.fn(),
 }));
 
-import { fetchRecentBattles, fetchBattleById } from '../../db/queries';
+import { fetchRecentBattles, fetchBattleById, fetchBattleReplay } from '../../db/queries';
 import { createBattleRouter } from './battle';
 
 const db = {} as any;
@@ -24,6 +25,7 @@ function buildApp() {
 beforeEach(() => {
   vi.mocked(fetchRecentBattles).mockReset();
   vi.mocked(fetchBattleById).mockReset();
+  vi.mocked(fetchBattleReplay).mockReset();
 });
 
 // ── GET /battles ──────────────────────────────────────────────────────────────
@@ -150,5 +152,77 @@ describe('GET /battles/:battleId', () => {
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'boom' });
+  });
+});
+
+// ── GET /battles/:battleId/replay ─────────────────────────────────────────────
+
+describe('GET /battles/:battleId/replay', () => {
+  const battle = { battle_id: 5, attacker: 'GA', defender: 'GB', winner: 'GA', rounds: 2 };
+  const rounds = [
+    {
+      round_number: 1,
+      attacker_scouts: 3, attacker_fighters: 1, attacker_cruisers: 0, attacker_dreadnoughts: 0,
+      defender_scouts: 2, defender_fighters: 0, defender_cruisers: 0, defender_dreadnoughts: 0,
+    },
+    {
+      round_number: 2,
+      attacker_scouts: 3, attacker_fighters: 1, attacker_cruisers: 0, attacker_dreadnoughts: 0,
+      defender_scouts: 0, defender_fighters: 0, defender_cruisers: 0, defender_dreadnoughts: 0,
+    },
+  ];
+
+  it('returns 400 for a non-numeric battle ID without querying the database', async () => {
+    const res = await request(buildApp()).get('/battles/abc/replay');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: 'Invalid battle ID' });
+    expect(fetchBattleReplay).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a negative battle ID', async () => {
+    const res = await request(buildApp()).get('/battles/-1/replay');
+
+    expect(res.status).toBe(400);
+    expect(fetchBattleReplay).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the battle does not exist', async () => {
+    vi.mocked(fetchBattleReplay).mockResolvedValue(null);
+
+    const res = await request(buildApp()).get('/battles/99/replay');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Battle not found' });
+    expect(fetchBattleReplay).toHaveBeenCalledWith(db, 99);
+  });
+
+  it('returns battle metadata and an ordered rounds array for a known battle', async () => {
+    vi.mocked(fetchBattleReplay).mockResolvedValue({ battle, rounds });
+
+    const res = await request(buildApp()).get('/battles/5/replay');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ battle, rounds });
+    expect(fetchBattleReplay).toHaveBeenCalledWith(db, 5);
+  });
+
+  it('returns an empty rounds array when no per-round data has been indexed yet', async () => {
+    vi.mocked(fetchBattleReplay).mockResolvedValue({ battle, rounds: [] });
+
+    const res = await request(buildApp()).get('/battles/5/replay');
+
+    expect(res.status).toBe(200);
+    expect(res.body.rounds).toEqual([]);
+    expect(res.body.battle).toEqual(battle);
+  });
+
+  it('forwards database errors to the error handler', async () => {
+    vi.mocked(fetchBattleReplay).mockRejectedValue(new Error('db error'));
+
+    const res = await request(buildApp()).get('/battles/5/replay');
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'db error' });
   });
 });

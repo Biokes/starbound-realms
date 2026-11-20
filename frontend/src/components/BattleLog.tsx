@@ -24,6 +24,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '0.8rem',
     color: 'var(--text-muted)',
     marginTop: '0.25rem',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
   },
   victory: {
     color: 'var(--green)',
@@ -37,6 +40,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: 'var(--text-muted)',
     fontSize: '0.9rem',
   },
+  replayBtn: {
+    background: 'transparent',
+    border: '1px solid var(--border)',
+    borderRadius: '4px',
+    color: 'var(--accent)',
+    fontSize: '0.75rem',
+    padding: '0.1rem 0.5rem',
+    cursor: 'pointer',
+  },
 };
 
 export interface BattleLogProps {
@@ -45,6 +57,8 @@ export interface BattleLogProps {
   error: string | null;
   /** The viewed player's address — each battle is framed as their victory or defeat. */
   playerAddress: string;
+  /** Called when the user clicks "Replay" on a battle entry. */
+  onReplay?: (battleId: number) => void;
 }
 
 /**
@@ -52,7 +66,7 @@ export interface BattleLogProps {
  * newest first: attacker, defender, system, winner, and rounds, with each
  * outcome framed as a victory or defeat for `playerAddress`.
  */
-export function BattleLog({ battles, isLoading, error, playerAddress }: BattleLogProps) {
+export function BattleLog({ battles, isLoading, error, playerAddress, onReplay }: BattleLogProps) {
   if (isLoading) {
     return <LoadingIndicator label="Loading battle history…" />;
   }
@@ -75,6 +89,15 @@ export function BattleLog({ battles, isLoading, error, playerAddress }: BattleLo
             round(s).
             <div style={styles.meta}>
               Battle #{battle.battleId} · ledger {battle.ledgerSequence}
+              {onReplay && (
+                <button
+                  style={styles.replayBtn}
+                  onClick={() => onReplay(battle.battleId)}
+                  aria-label={`Replay battle ${battle.battleId}`}
+                >
+                  Replay
+                </button>
+              )}
             </div>
           </li>
         );

@@ -1,3 +1,4 @@
+import React from 'react';
 import { RecentBattle } from '../hooks/useRecentBattles';
 import { truncateAddress } from '../lib/format';
 import { LoadingIndicator } from './LoadingIndicator';
@@ -22,6 +23,9 @@ const styles: Record<string, React.CSSProperties> = {
   meta: {
     fontSize: '0.8rem',
     color: 'var(--text-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
   },
   pager: {
     display: 'flex',
@@ -30,6 +34,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   textMuted: {
     color: 'var(--text-muted)',
+  },
+  replayBtn: {
+    background: 'transparent',
+    border: '1px solid var(--border)',
+    borderRadius: '4px',
+    color: 'var(--accent)',
+    fontSize: '0.75rem',
+    padding: '0.1rem 0.5rem',
+    cursor: 'pointer',
   },
 };
 
@@ -41,6 +54,8 @@ export interface BattleFeedProps {
   hasNextPage: boolean;
   onPreviousPage: () => void;
   onNextPage: () => void;
+  /** Called when the user clicks "Replay" on a battle entry. */
+  onReplay?: (battleId: number) => void;
 }
 
 /** Lists battles across all players, newest first, with previous and next paging. */
@@ -52,6 +67,7 @@ export function BattleFeed({
   hasNextPage,
   onPreviousPage,
   onNextPage,
+  onReplay,
 }: BattleFeedProps) {
   if (isLoading) {
     return <LoadingIndicator label="Loading battles…" />;
@@ -72,6 +88,15 @@ export function BattleFeed({
             {battle.systemId}. {truncateAddress(battle.winner)} won in {battle.rounds} round(s).
             <div style={styles.meta}>
               Battle #{battle.battleId} · ledger {battle.ledgerSequence}
+              {onReplay && (
+                <button
+                  style={styles.replayBtn}
+                  onClick={() => onReplay(battle.battleId)}
+                  aria-label={`Replay battle ${battle.battleId}`}
+                >
+                  Replay
+                </button>
+              )}
             </div>
           </li>
         ))}

@@ -97,6 +97,28 @@ export const CREATE_NOTIFICATIONS_TABLE = `
   );
 `;
 
+/**
+ * One row per combat round. Populated when the indexer processes a
+ * battle_resolved event that includes per-round data.
+ * round_number is 1-indexed.
+ */
+export const CREATE_BATTLE_ROUNDS_TABLE = `
+  CREATE TABLE IF NOT EXISTS battle_rounds (
+    id                      BIGSERIAL PRIMARY KEY,
+    battle_id               BIGINT NOT NULL REFERENCES battles(battle_id) ON DELETE CASCADE,
+    round_number            INTEGER NOT NULL,
+    attacker_scouts         INTEGER NOT NULL,
+    attacker_fighters       INTEGER NOT NULL,
+    attacker_cruisers       INTEGER NOT NULL,
+    attacker_dreadnoughts   INTEGER NOT NULL,
+    defender_scouts         INTEGER NOT NULL,
+    defender_fighters       INTEGER NOT NULL,
+    defender_cruisers       INTEGER NOT NULL,
+    defender_dreadnoughts   INTEGER NOT NULL,
+    UNIQUE (battle_id, round_number)
+  );
+`;
+
 export const ALL_TABLES = [
   CREATE_STAR_SYSTEMS_TABLE,
   CREATE_PLAYERS_TABLE,
@@ -106,4 +128,5 @@ export const ALL_TABLES = [
   CREATE_FLEET_SNAPSHOTS_TABLE,
   CREATE_TRADE_OFFERS_TABLE,
   CREATE_NOTIFICATIONS_TABLE,
+  CREATE_BATTLE_ROUNDS_TABLE,
 ];

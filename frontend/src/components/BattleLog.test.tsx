@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { BattleLog } from './BattleLog';
 import { PlayerBattle } from '../hooks/useBattleHistory';
 
@@ -92,5 +92,42 @@ describe('BattleLog', () => {
 
     expect(screen.queryByText(/loading/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/failed/i)).not.toBeInTheDocument();
+  });
+
+  it('does not show a Replay button when onReplay is not provided', () => {
+    render(<BattleLog battles={[battle()]} isLoading={false} error={null} playerAddress={MY_ADDRESS} />);
+
+    expect(screen.queryByRole('button', { name: /replay/i })).not.toBeInTheDocument();
+  });
+
+  it('shows a Replay button for each battle when onReplay is provided', () => {
+    render(
+      <BattleLog
+        battles={[battle({ battleId: 14 }), battle({ battleId: 13 })]}
+        isLoading={false}
+        error={null}
+        playerAddress={MY_ADDRESS}
+        onReplay={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByRole('button', { name: /replay/i })).toHaveLength(2);
+  });
+
+  it('calls onReplay with the correct battle ID when Replay is clicked', () => {
+    const onReplay = vi.fn();
+    render(
+      <BattleLog
+        battles={[battle({ battleId: 42 })]}
+        isLoading={false}
+        error={null}
+        playerAddress={MY_ADDRESS}
+        onReplay={onReplay}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /replay battle 42/i }));
+
+    expect(onReplay).toHaveBeenCalledWith(42);
   });
 });
