@@ -10,6 +10,7 @@ import { useBattleHistory } from '../hooks/useBattleHistory';
 import { GalaxyMap } from './GalaxyMap';
 import { StarSystem } from './StarSystem';
 import { Fleet } from './Fleet';
+import { TradeView } from './TradeView';
 import { ResourceBalances } from './ResourceBalances';
 import { BattleFeed } from './BattleFeed';
 import { PlayerProfile } from './PlayerProfile';
@@ -271,6 +272,11 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
               ) : (
                 <Fleet fleet={fleet} onBuildUnit={buildUnit} />
               )}
+            </div>
+
+            <div>
+              <h2 style={styles.galaxyTitle}>Trade</h2>
+              <TradeView walletAddress={walletAddress} backendUrl={backendUrl} />
             </div>
 
             <div>

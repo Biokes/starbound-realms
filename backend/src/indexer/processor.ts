@@ -11,6 +11,9 @@ import {
   addAllianceMember,
   removeAllianceMember,
   createNotification,
+  saveGalaxyEvent,
+  insertTradeOffer,
+  acceptTradeOffer,
 } from '../db/queries';
 
 export interface ContractEvent {
@@ -67,6 +70,16 @@ export async function processEvent(
       break;
     case 'alliance_left':
       await processAllianceLeft(db, event);
+      break;
+    case 'pirate_raid':
+    case 'resource_surge':
+      await processGalaxyEvent(db, event);
+      break;
+    case 'trade_created':
+      await processTradeCreated(db, event);
+      break;
+    case 'trade_accepted':
+      await processTradeAccepted(db, event);
       break;
     default:
       // Unknown event — skip silently
@@ -219,4 +232,46 @@ async function processAllianceLeft(db: Pool, event: ContractEvent): Promise<void
 
   // Notify the player that they left an alliance (#217)
   await createNotification(db, player, 'alliance_left', 'You left your alliance.', null);
+}
+
+/**
+ * Handles pirate_raid and resource_surge galaxy events (#206/#207).
+ * topic: ["pirate_raid"|"resource_surge", system_id], value: { player?, magnitude }
+ */
+async function processGalaxyEvent(db: Pool, event: ContractEvent): Promise<void> {
+  const eventType = event.topic[0];
+  const systemId = Number(event.topic[1]);
+  const magnitude = Number(event.value?.magnitude ?? event.value ?? 0);
+  const affectedPlayer = event.value?.player ?? undefined;
+
+  await saveGalaxyEvent(db, eventType, systemId, magnitude, event.ledgerSequence, affectedPlayer);
+}
+
+/**
+ * Handles trade_created — topic: ["trade_created", maker],
+ * value: { offer_id, offer_resource, offer_amount, want_resource, want_amount }
+ */
+async function processTradeCreated(db: Pool, event: ContractEvent): Promise<void> {
+  const maker = event.topic[1];
+  const { offer_resource, offer_amount, want_resource, want_amount } = event.value;
+
+  await insertTradeOffer(
+    db,
+    maker,
+    String(offer_resource),
+    BigInt(offer_amount),
+    String(want_resource),
+    BigInt(want_amount),
+    event.ledgerSequence
+  );
+}
+
+/**
+ * Handles trade_accepted — topic: ["trade_accepted", taker], value: offer_id
+ */
+async function processTradeAccepted(db: Pool, event: ContractEvent): Promise<void> {
+  const taker = event.topic[1];
+  const offerId = Number(Array.isArray(event.value) ? event.value[0] : event.value);
+
+  await acceptTradeOffer(db, offerId, taker);
 }
