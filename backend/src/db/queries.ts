@@ -224,98 +224,56 @@ export async function saveBattle(
   );
 }
 
-// ── Trade Offers ─────────────────────────────────────────────────────────────
+// ── Battle Rounds (replay) ────────────────────────────────────────────────────
 
-export async function saveTradeOffer(db: Pool, offerId: string, offer: unknown, ledgerSequence: number) {
-  await db.query(
-    `INSERT INTO trade_offers (offer_id, offer, ledger_sequence)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (offer_id) DO UPDATE
-       SET offer = EXCLUDED.offer, status = 'open',
-           ledger_sequence = EXCLUDED.ledger_sequence, updated_at = NOW()`,
-    [offerId, JSON.stringify(offer, (_, value) => typeof value === 'bigint' ? value.toString() : value), ledgerSequence]
-  );
+export interface FleetSnapshot {
+  scouts: number;
+  fighters: number;
+  cruisers: number;
+  dreadnoughts: number;
 }
 
-export async function updateTradeOfferStatus(
+export async function saveBattleRound(
   db: Pool,
-  offerId: string,
-  status: 'accepted' | 'cancelled'
+  battleId: number,
+  roundNumber: number,
+  attacker: FleetSnapshot,
+  defender: FleetSnapshot
 ) {
   await db.query(
-    `UPDATE trade_offers SET status = $2, updated_at = NOW() WHERE offer_id = $1`,
-    [offerId, status]
+    `INSERT INTO battle_rounds
+       (battle_id, round_number,
+        attacker_scouts, attacker_fighters, attacker_cruisers, attacker_dreadnoughts,
+        defender_scouts, defender_fighters, defender_cruisers, defender_dreadnoughts)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ON CONFLICT (battle_id, round_number) DO NOTHING`,
+    [
+      battleId, roundNumber,
+      attacker.scouts, attacker.fighters, attacker.cruisers, attacker.dreadnoughts,
+      defender.scouts, defender.fighters, defender.cruisers, defender.dreadnoughts,
+    ]
   );
 }
 
-export async function fetchOpenTradeOffers(db: Pool) {
-  const result = await db.query(
-    `SELECT offer_id, offer, ledger_sequence, created_at
-     FROM trade_offers WHERE status = 'open' ORDER BY created_at DESC`
+export async function fetchBattleReplay(db: Pool, battleId: number) {
+  const battle = await db.query(
+    'SELECT * FROM battles WHERE battle_id = $1',
+    [battleId]
   );
-  return result.rows;
-}
+  if (!battle.rows[0]) return null;
 
-// ── Alliances (#82) ───────────────────────────────────────────────────────────
+  const rounds = await db.query(
+    `SELECT
+       round_number,
+       attacker_scouts, attacker_fighters, attacker_cruisers, attacker_dreadnoughts,
+       defender_scouts, defender_fighters, defender_cruisers, defender_dreadnoughts
+     FROM battle_rounds
+     WHERE battle_id = $1
+     ORDER BY round_number ASC`,
+    [battleId]
+  );
 
-export async function createAlliance(
-  db: Pool,
-  allianceId: number,
-  name: string,
-  leader: string,
-  ledgerSequence: number
-) {
-  await db.query(
-    `INSERT INTO alliances (alliance_id, name, leader, member_count, ledger_sequence)
-     VALUES ($1, $2, $3, 1, $4)
-     ON CONFLICT (alliance_id) DO NOTHING`,
-    [allianceId, name, leader, ledgerSequence]
-  );
-  await addAllianceMember(db, allianceId, leader, 'leader');
-}
-
-export async function addAllianceMember(
-  db: Pool,
-  allianceId: number,
-  player: string,
-  role: 'leader' | 'member' = 'member'
-) {
-  await db.query(
-    `INSERT INTO alliance_members (alliance_id, player, role)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (player) DO UPDATE
-       SET alliance_id = EXCLUDED.alliance_id,
-           role = EXCLUDED.role,
-           joined_at = NOW()`,
-    [allianceId, player, role]
-  );
-  await db.query(
-    `UPDATE alliances
-     SET member_count = (
-       SELECT COUNT(*) FROM alliance_members WHERE alliance_id = $1
-     ), updated_at = NOW()
-     WHERE alliance_id = $1`,
-    [allianceId]
-  );
-}
-
-export async function removeAllianceMember(db: Pool, player: string) {
-  const existing = await db.query(
-    `SELECT alliance_id FROM alliance_members WHERE player = $1`,
-    [player]
-  );
-  const allianceId = existing.rows[0]?.alliance_id;
-  if (allianceId === undefined) return;
-
-  await db.query(`DELETE FROM alliance_members WHERE player = $1`, [player]);
-  await db.query(
-    `UPDATE alliances
-     SET member_count = (
-       SELECT COUNT(*) FROM alliance_members WHERE alliance_id = $1
-     ), updated_at = NOW()
-     WHERE alliance_id = $1`,
-    [allianceId]
-  );
+  return { battle: battle.rows[0], rounds: rounds.rows };
 }
 
 // ── Trade Offers (#204) ───────────────────────────────────────────────────────
@@ -391,7 +349,67 @@ export async function fetchRecentGalaxyEvents(db: Pool, limit = 20, offset = 0) 
   return result.rows;
 }
 
-// ── Alliance helpers ──────────────────────────────────────────────────────────
+// ── Alliances (#82) ───────────────────────────────────────────────────────────
+
+export async function createAlliance(
+  db: Pool,
+  allianceId: number,
+  name: string,
+  leader: string,
+  ledgerSequence: number
+) {
+  await db.query(
+    `INSERT INTO alliances (alliance_id, name, leader, member_count, ledger_sequence)
+     VALUES ($1, $2, $3, 1, $4)
+     ON CONFLICT (alliance_id) DO NOTHING`,
+    [allianceId, name, leader, ledgerSequence]
+  );
+  await addAllianceMember(db, allianceId, leader, 'leader');
+}
+
+export async function addAllianceMember(
+  db: Pool,
+  allianceId: number,
+  player: string,
+  role: 'leader' | 'member' = 'member'
+) {
+  await db.query(
+    `INSERT INTO alliance_members (alliance_id, player, role)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (player) DO UPDATE
+       SET alliance_id = EXCLUDED.alliance_id,
+           role = EXCLUDED.role,
+           joined_at = NOW()`,
+    [allianceId, player, role]
+  );
+  await db.query(
+    `UPDATE alliances
+     SET member_count = (
+       SELECT COUNT(*) FROM alliance_members WHERE alliance_id = $1
+     ), updated_at = NOW()
+     WHERE alliance_id = $1`,
+    [allianceId]
+  );
+}
+
+export async function removeAllianceMember(db: Pool, player: string) {
+  const existing = await db.query(
+    `SELECT alliance_id FROM alliance_members WHERE player = $1`,
+    [player]
+  );
+  const allianceId = existing.rows[0]?.alliance_id;
+  if (allianceId === undefined) return;
+
+  await db.query(`DELETE FROM alliance_members WHERE player = $1`, [player]);
+  await db.query(
+    `UPDATE alliances
+     SET member_count = (
+       SELECT COUNT(*) FROM alliance_members WHERE alliance_id = $1
+     ), updated_at = NOW()
+     WHERE alliance_id = $1`,
+    [allianceId]
+  );
+}
 
 /** The alliance a player currently belongs to, with its member list, or null. */
 export async function fetchAllianceByPlayer(db: Pool, address: string) {

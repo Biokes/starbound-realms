@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { Pool } from 'pg';
-import { fetchRecentBattles, fetchBattleById } from '../../db/queries';
+import { fetchRecentBattles, fetchBattleById, fetchBattleReplay } from '../../db/queries';
 import { parseIntegerId, validateParam } from '../validators';
 
 export function createBattleRouter(db: Pool): Router {
@@ -8,6 +8,7 @@ export function createBattleRouter(db: Pool): Router {
 
   router.get('/', fetchBattlesList(db));
   router.param('battleId', validateParam(parseBattleId));
+  router.get('/:battleId/replay', fetchBattleReplayHandler(db));
   router.get('/:battleId', fetchSingleBattle(db));
 
   return router;
@@ -55,4 +56,23 @@ function parsePaginationParams(query: Record<string, any>): { limit: number; off
 /** Parses and validates a battle ID from a route param */
 function parseBattleId(raw: string): number {
   return parseIntegerId(raw, 'battle ID');
+}
+
+/** Returns full battle metadata and an ordered array of per-round fleet snapshots */
+function fetchBattleReplayHandler(db: Pool) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const battleId = parseBattleId(req.params.battleId);
+      const replay = await fetchBattleReplay(db, battleId);
+
+      if (!replay) {
+        res.status(404).json({ error: 'Battle not found' });
+        return;
+      }
+
+      res.json(replay);
+    } catch (err) {
+      next(err);
+    }
+  };
 }
