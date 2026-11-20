@@ -10,6 +10,8 @@ import {
   createAlliance,
   addAllianceMember,
   removeAllianceMember,
+  saveTradeOffer,
+  updateTradeOfferStatus,
   createNotification,
   saveGalaxyEvent,
   insertTradeOffer,
@@ -71,6 +73,14 @@ export async function processEvent(
     case 'alliance_left':
       await processAllianceLeft(db, event);
       break;
+    case 'trade_offered':
+      await processTradeOffered(db, event);
+      break;
+    case 'trade_accepted':
+      await processTradeOfferClosed(db, event, 'accepted');
+      break;
+    case 'trade_cancelled':
+      await processTradeOfferClosed(db, event, 'cancelled');
     case 'pirate_raid':
     case 'resource_surge':
       await processGalaxyEvent(db, event);
@@ -88,6 +98,28 @@ export async function processEvent(
 
   // Broadcast to WebSocket clients after successful persistence (#220).
   broadcast?.(event);
+}
+
+function getTradeOfferId(event: ContractEvent): string {
+  const value = event.value as { offer_id?: unknown } | null;
+  const id = value && typeof value === 'object' ? value.offer_id : undefined;
+  const candidate = id ?? (value !== null && typeof value !== 'object' ? value : undefined) ?? event.topic[1];
+  if (typeof candidate !== 'string' && typeof candidate !== 'number' && typeof candidate !== 'bigint') {
+    throw new Error(`Invalid ${event.topic[0]} event: missing offer ID`);
+  }
+  return String(candidate);
+}
+
+async function processTradeOffered(db: Pool, event: ContractEvent): Promise<void> {
+  await saveTradeOffer(db, getTradeOfferId(event), event.value, event.ledgerSequence);
+}
+
+async function processTradeOfferClosed(
+  db: Pool,
+  event: ContractEvent,
+  status: 'accepted' | 'cancelled'
+): Promise<void> {
+  await updateTradeOfferStatus(db, getTradeOfferId(event), status);
 }
 
 /** Handles system_claimed event — updates star_systems and player stats */

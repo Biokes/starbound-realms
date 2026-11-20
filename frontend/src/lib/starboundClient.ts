@@ -28,6 +28,7 @@ export function buildStarboundClientConfig(env: Record<string, string | undefine
       resources: requireEnv(env, 'VITE_CONTRACT_RESOURCES'),
       fleet: requireEnv(env, 'VITE_CONTRACT_FLEET'),
       battle: requireEnv(env, 'VITE_CONTRACT_BATTLE'),
+      ...(env.VITE_CONTRACT_ALLIANCE ? { alliance: env.VITE_CONTRACT_ALLIANCE } : {}),
     },
   };
 }

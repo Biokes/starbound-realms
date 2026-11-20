@@ -6,6 +6,7 @@ import { createPlayerRouter } from './api/routes/player';
 import { createBattleRouter } from './api/routes/battle';
 import { createFleetRouter } from './api/routes/fleet';
 import { createLeaderboardRouter } from './api/routes/leaderboard';
+import { createTradeRouter } from './api/routes/trades';
 import { createTradeRouter } from './api/routes/trade';
 import { createEventsRouter } from './api/routes/events';
 import { standardLimiter, strictLimiter } from './api/middleware/rateLimit';
@@ -108,6 +109,7 @@ function readIndexerContractIds(): string[] {
     process.env.CONTRACT_RESOURCES,
     process.env.CONTRACT_FLEET,
     process.env.CONTRACT_BATTLE,
+    process.env.CONTRACT_ALLIANCE,
   ].filter((id): id is string => Boolean(id));
 }
 

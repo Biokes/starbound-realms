@@ -224,6 +224,38 @@ export async function saveBattle(
   );
 }
 
+// ── Trade Offers ─────────────────────────────────────────────────────────────
+
+export async function saveTradeOffer(db: Pool, offerId: string, offer: unknown, ledgerSequence: number) {
+  await db.query(
+    `INSERT INTO trade_offers (offer_id, offer, ledger_sequence)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (offer_id) DO UPDATE
+       SET offer = EXCLUDED.offer, status = 'open',
+           ledger_sequence = EXCLUDED.ledger_sequence, updated_at = NOW()`,
+    [offerId, JSON.stringify(offer, (_, value) => typeof value === 'bigint' ? value.toString() : value), ledgerSequence]
+  );
+}
+
+export async function updateTradeOfferStatus(
+  db: Pool,
+  offerId: string,
+  status: 'accepted' | 'cancelled'
+) {
+  await db.query(
+    `UPDATE trade_offers SET status = $2, updated_at = NOW() WHERE offer_id = $1`,
+    [offerId, status]
+  );
+}
+
+export async function fetchOpenTradeOffers(db: Pool) {
+  const result = await db.query(
+    `SELECT offer_id, offer, ledger_sequence, created_at
+     FROM trade_offers WHERE status = 'open' ORDER BY created_at DESC`
+  );
+  return result.rows;
+}
+
 // ── Alliances (#82) ───────────────────────────────────────────────────────────
 
 export async function createAlliance(

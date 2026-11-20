@@ -77,6 +77,14 @@ export const CREATE_FLEET_SNAPSHOTS_TABLE = `
   );
 `;
 
+export const CREATE_TRADE_OFFERS_TABLE = `
+  CREATE TABLE IF NOT EXISTS trade_offers (
+    offer_id        VARCHAR(128) PRIMARY KEY,
+    offer           JSONB NOT NULL,
+    status          VARCHAR(16) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'accepted', 'cancelled')),
+    ledger_sequence BIGINT NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
 export const CREATE_NOTIFICATIONS_TABLE = `
   CREATE TABLE IF NOT EXISTS notifications (
     id              BIGSERIAL PRIMARY KEY,
@@ -96,5 +104,6 @@ export const ALL_TABLES = [
   CREATE_RESOURCE_EVENTS_TABLE,
   CREATE_INDEXER_STATE_TABLE,
   CREATE_FLEET_SNAPSHOTS_TABLE,
+  CREATE_TRADE_OFFERS_TABLE,
   CREATE_NOTIFICATIONS_TABLE,
 ];

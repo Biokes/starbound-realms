@@ -152,6 +152,15 @@ export function StarSystem({ system, walletAddress, fleet, onClose, onClaim, onM
         <span>Owner</span>
         <span>{getOwnershipLabel(system, walletAddress)}</span>
       </div>
+      {system.activeEvent && (
+        <div style={styles.row} aria-label="Active event">
+          <span>Active event</span>
+          <span>
+            {system.activeEvent.type}
+            {system.activeEvent.details ? ` — ${system.activeEvent.details}` : ''}
+          </span>
+        </div>
+      )}
 
       {canClaim && (
         <button style={styles.claimButton} onClick={() => onClaim!(system.systemId)}>
