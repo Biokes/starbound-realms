@@ -227,6 +227,42 @@ const raw = await client.simulateReadCall(
 
 ---
 
+## Inspecting the connected network: `getNetworkInfo`
+
+`StarboundClient.getNetworkInfo()` reports which network a client is pointed
+at. It is synchronous and makes no RPC request, so it is cheap to call before
+doing anything that costs fees — e.g. to refuse to run a script against the
+wrong network, or to show a network badge in the UI.
+
+```ts
+const client = StarboundClient.testnet(contractIds);
+
+const info = client.getNetworkInfo();
+// => {
+//   network: 'testnet',                              // 'testnet' | 'mainnet' | 'unknown'
+//   rpcUrl: 'https://soroban-testnet.stellar.org/',
+//   networkPassphrase: 'Test SDF Network ; September 2015',
+// }
+
+if (info.network !== 'testnet') {
+  throw new Error(`Refusing to run against ${info.network}`);
+}
+```
+
+`network` is derived from the passphrase: anything other than the official
+testnet or public passphrase (a local standalone node, futurenet, …) reports
+`'unknown'`.
+
+A runnable version that also performs a read call to confirm the RPC endpoint
+is live lives in `sdk/examples/network-info.ts`:
+
+```bash
+pnpm --dir sdk build
+node sdk/examples/network-info.ts
+```
+
+---
+
 ## Custom network / mainnet
 
 `StarboundClient.testnet(contractIds)` is a convenience factory. For mainnet or
