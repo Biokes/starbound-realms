@@ -282,7 +282,7 @@ Read the full [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 - [ ] Frontend — fleet builder UI
 - [ ] Frontend — battle log & wallet integration
 - [x] Testnet deployment — live, see [Live on Testnet](#-live-on-testnet) above
-- [ ] Mainnet launch
+- [ ] Mainnet launch — see [Mainnet Migration Plan](docs/mainnet-migration-plan.md)
 
 ---
 

@@ -315,3 +315,5 @@ if missing is non-empty:
 - Soroban replay prevention built-in
 - Backend is read-only, holds no signing keys
 - Frontend never holds private keys — all signing via Freighter
+- All four contracts implement an admin-gated `pause`/`unpause` mechanism to halt state-mutating calls in an incident
+- Mainnet admin key custody, asset issuance process, and rollback plan are documented in [docs/mainnet-migration-plan.md](mainnet-migration-plan.md)
