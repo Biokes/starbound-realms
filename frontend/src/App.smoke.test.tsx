@@ -158,6 +158,16 @@ vi.mock('./components/ResourceSetupBanner', () => ({
   ResourceSetupBanner: () => <div data-testid="resource-setup-banner" />,
 }));
 
+// ── useRecentlyActivePlayers mock — the widget's own tests cover fetching ─────
+
+vi.mock('./hooks/useRecentlyActivePlayers', () => ({
+  useRecentlyActivePlayers: vi.fn(() => ({
+    players: [{ address: 'GRECENTPLAYER', systemsOwned: 2, lastActive: '2026-11-20T11:55:00.000Z' }],
+    isLoading: false,
+    error: null,
+  })),
+}));
+
 // ── Component under test ──────────────────────────────────────────────────────
 
 import App from './App';

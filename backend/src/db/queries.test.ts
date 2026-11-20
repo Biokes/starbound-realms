@@ -5,6 +5,7 @@ import {
   upsertStarSystem,
   fetchPlayerByAddress,
   fetchLeaderboard,
+  fetchRecentlyActivePlayers,
   incrementPlayerSystemsOwned,
   decrementPlayerSystemsOwned,
   fetchRecentBattles,
@@ -160,6 +161,31 @@ describe('fetchLeaderboard', () => {
 
     const [, params] = db.query.mock.calls[0];
     expect(params).toEqual([5]);
+  });
+});
+
+describe('fetchRecentlyActivePlayers', () => {
+  it('orders players by last activity, newest first, with a default limit of 10', async () => {
+    const rows = [{ address: 'A', last_active: '2026-11-20T00:00:00.000Z' }];
+    const db = fakeDb(rows);
+
+    const result = await fetchRecentlyActivePlayers(db);
+
+    const [sql, params] = db.query.mock.calls[0];
+    expect(sql).toContain('FROM players');
+    expect(sql).toContain('ORDER BY last_active DESC');
+    expect(sql).toContain('LIMIT $1');
+    expect(params).toEqual([10]);
+    expect(result).toEqual(rows);
+  });
+
+  it('honours a custom limit', async () => {
+    const db = fakeDb();
+
+    await fetchRecentlyActivePlayers(db, 3);
+
+    const [, params] = db.query.mock.calls[0];
+    expect(params).toEqual([3]);
   });
 });
 

@@ -6,9 +6,15 @@ vi.mock('../../db/queries', () => ({
   fetchPlayerByAddress: vi.fn(),
   fetchBattlesByPlayer: vi.fn(),
   fetchAllianceByPlayer: vi.fn(),
+  fetchRecentlyActivePlayers: vi.fn(),
 }));
 
-import { fetchPlayerByAddress, fetchBattlesByPlayer, fetchAllianceByPlayer } from '../../db/queries';
+import {
+  fetchPlayerByAddress,
+  fetchBattlesByPlayer,
+  fetchAllianceByPlayer,
+  fetchRecentlyActivePlayers,
+} from '../../db/queries';
 import { createPlayerRouter } from './player';
 
 const db = {} as any;
@@ -31,6 +37,43 @@ beforeEach(() => {
   vi.mocked(fetchPlayerByAddress).mockClear();
   vi.mocked(fetchBattlesByPlayer).mockClear();
   vi.mocked(fetchAllianceByPlayer).mockClear();
+  vi.mocked(fetchRecentlyActivePlayers).mockClear();
+});
+
+// ── GET /player/recent ────────────────────────────────────────────────────────
+
+describe('GET /player/recent', () => {
+  it('returns { players } from the recently-active query', async () => {
+    const players = [
+      { address: VALID_ADDRESS, last_active: '2026-11-20T10:00:00.000Z' },
+      { address: UNKNOWN_ADDRESS, last_active: '2026-11-20T09:00:00.000Z' },
+    ];
+    vi.mocked(fetchRecentlyActivePlayers).mockResolvedValue(players);
+
+    const res = await request(buildApp()).get('/player/recent');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ players });
+    expect(fetchRecentlyActivePlayers).toHaveBeenCalledWith(db);
+  });
+
+  it('is not treated as an address lookup', async () => {
+    vi.mocked(fetchRecentlyActivePlayers).mockResolvedValue([]);
+
+    const res = await request(buildApp()).get('/player/recent');
+
+    expect(res.status).toBe(200);
+    expect(fetchPlayerByAddress).not.toHaveBeenCalled();
+  });
+
+  it('forwards errors to the error handler', async () => {
+    vi.mocked(fetchRecentlyActivePlayers).mockRejectedValue(new Error('db down'));
+
+    const res = await request(buildApp()).get('/player/recent');
+
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty('error', 'db down');
+  });
 });
 
 // ── GET /player/:address ──────────────────────────────────────────────────────

@@ -44,6 +44,16 @@ vi.mock('./hooks/useLeaderboard', () => ({
   })),
 }));
 
+// ── useRecentlyActivePlayers mock — the widget's own tests cover fetching ─────
+
+vi.mock('./hooks/useRecentlyActivePlayers', () => ({
+  useRecentlyActivePlayers: vi.fn(() => ({
+    players: [{ address: 'GRECENTPLAYER', systemsOwned: 2, lastActive: '2026-11-20T11:55:00.000Z' }],
+    isLoading: false,
+    error: null,
+  })),
+}));
+
 // ── Component under test ──────────────────────────────────────────────────────
 
 import App from './App';
@@ -126,6 +136,17 @@ describe('App — wallet connection', () => {
     render(<App />);
 
     expect(screen.queryByTestId('game-view')).not.toBeInTheDocument();
+  });
+});
+
+describe('App — recently active players (#311)', () => {
+  it('shows the recently active players widget on the landing page without a wallet', () => {
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: /recently active/i })).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Recently active players' });
+    expect(list).toHaveTextContent('GRECEN...AYER');
+    expect(list).toHaveTextContent('2 systems');
   });
 });
 

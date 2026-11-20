@@ -51,6 +51,18 @@ export async function fetchLeaderboard(db: Pool, limit = 20) {
   return result.rows;
 }
 
+/**
+ * Returns the players with the most recent activity (claims, transfers),
+ * newest first. Backs the frontend's "recently active players" widget (#311).
+ */
+export async function fetchRecentlyActivePlayers(db: Pool, limit = 10) {
+  const result = await db.query(
+    'SELECT * FROM players ORDER BY last_active DESC LIMIT $1',
+    [limit]
+  );
+  return result.rows;
+}
+
 export async function incrementPlayerSystemsOwned(db: Pool, address: string) {
   await db.query(
     `INSERT INTO players (address, systems_owned)
