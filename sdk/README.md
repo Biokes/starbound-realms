@@ -42,6 +42,7 @@ import {
   FleetClient,
   ResourcesClient,
   BattleClient,
+  TradeClient,
 } from '@starbound-realms/sdk';
 
 // 1. Create a client pointing at Stellar testnet.
@@ -58,6 +59,7 @@ const galaxy    = new GalaxyClient(client);
 const fleet     = new FleetClient(client);
 const resources = new ResourcesClient(client);
 const battle    = new BattleClient(client);
+const trade     = new TradeClient(client);
 ```
 
 ---
@@ -108,6 +110,12 @@ const battleId = await battle.resolveBattle(
   systemId,
   sign
 );
+
+// Create, browse, accept, or cancel escrowed resource offers.
+const offerId = await trade.createOffer(
+  playerAddress, 'Iron', 100n, 'Plasma', 25n, Math.floor(Date.now() / 1000) + 3600, sign
+);
+const openOffers = await trade.listOffers();
 ```
 
 ---

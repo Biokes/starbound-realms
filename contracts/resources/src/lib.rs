@@ -2,6 +2,7 @@
 
 use soroban_sdk::{
     contract, contractclient, contractimpl, contracttype, symbol_short, token, Address, Env,
+    Symbol, Vec,
 };
 
 // ── Storage Keys ─────────────────────────────────────────────────────────────
@@ -16,17 +17,44 @@ pub enum DataKey {
     Initialized,
     GalaxyMap,
     LastMined(u32),
+    NextTradeOfferId,
+    OpenTradeOffers,
+    TradeOffer(u64),
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 #[contracttype]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResourceType {
     Iron,
     Energy,
     Plasma,
 }
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TradeStatus {
+    Open,
+    Accepted,
+    Cancelled,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TradeOffer {
+    pub offer_id: u64,
+    pub maker: Address,
+    pub offer_resource: ResourceType,
+    pub offer_amount: i128,
+    pub want_resource: ResourceType,
+    pub want_amount: i128,
+    pub created_at: u64,
+    pub expires_at: u64,
+    pub status: TradeStatus,
+}
+
+const MAX_TRADE_PAGE_SIZE: u32 = 50;
 
 /// Mirrors galaxy_map::StarSystem field-for-field. Its ResourceType has the
 /// same variants in the same order as ours, so it encodes identically.
@@ -305,6 +333,169 @@ impl ResourcesContract {
         client.balance(&player)
     }
 
+    pub fn create_trade_offer(
+        env: Env,
+        maker: Address,
+        offer_resource: ResourceType,
+        offer_amount: i128,
+        want_resource: ResourceType,
+        want_amount: i128,
+        expires_at: u64,
+    ) -> u64 {
+        maker.require_auth();
+        if offer_amount <= 0 || want_amount <= 0 {
+            panic!("trade amounts must be positive");
+        }
+        if offer_resource == want_resource {
+            panic!("trade resources must differ");
+        }
+
+        let now = env.ledger().timestamp();
+        if expires_at <= now {
+            panic!("trade expiry must be in the future");
+        }
+
+        let escrow = env.current_contract_address();
+        token::TokenClient::new(&env, &Self::token_addr(&env, &offer_resource)).transfer(
+            &maker,
+            &escrow,
+            &offer_amount,
+        );
+
+        let next_id: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::NextTradeOfferId)
+            .unwrap_or(0);
+        let offer_id = next_id.checked_add(1).expect("trade offer id overflow");
+        let offer = TradeOffer {
+            offer_id,
+            maker: maker.clone(),
+            offer_resource,
+            offer_amount,
+            want_resource,
+            want_amount,
+            created_at: now,
+            expires_at,
+            status: TradeStatus::Open,
+        };
+
+        let mut open_offers = Self::open_trade_offer_ids(&env);
+        open_offers.push_back(offer_id);
+        env.storage()
+            .persistent()
+            .set(&DataKey::NextTradeOfferId, &offer_id);
+        env.storage()
+            .persistent()
+            .set(&DataKey::TradeOffer(offer_id), &offer);
+        env.storage()
+            .persistent()
+            .set(&DataKey::OpenTradeOffers, &open_offers);
+        env.events()
+            .publish((Symbol::new(&env, "trade_offered"), maker), offer);
+        offer_id
+    }
+
+    pub fn accept_trade_offer(env: Env, taker: Address, offer_id: u64) {
+        taker.require_auth();
+        let mut offer: TradeOffer = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TradeOffer(offer_id))
+            .expect("trade offer not found");
+        if offer.status != TradeStatus::Open {
+            panic!("trade offer is not open");
+        }
+        if offer.maker == taker {
+            panic!("cannot accept own trade offer");
+        }
+        if env.ledger().timestamp() >= offer.expires_at {
+            panic!("trade offer expired");
+        }
+
+        let maker = offer.maker.clone();
+        let escrow = env.current_contract_address();
+        token::TokenClient::new(&env, &Self::token_addr(&env, &offer.want_resource)).transfer(
+            &taker,
+            &maker,
+            &offer.want_amount,
+        );
+        token::TokenClient::new(&env, &Self::token_addr(&env, &offer.offer_resource)).transfer(
+            &escrow,
+            &taker,
+            &offer.offer_amount,
+        );
+
+        offer.status = TradeStatus::Accepted;
+        env.storage()
+            .persistent()
+            .set(&DataKey::TradeOffer(offer_id), &offer);
+        Self::remove_open_trade_offer(&env, offer_id);
+        env.events().publish(
+            (Symbol::new(&env, "trade_accepted"), taker),
+            (offer_id, maker),
+        );
+    }
+
+    pub fn cancel_trade_offer(env: Env, maker: Address, offer_id: u64) {
+        maker.require_auth();
+        let mut offer: TradeOffer = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TradeOffer(offer_id))
+            .expect("trade offer not found");
+        if offer.maker != maker {
+            panic!("only the maker can cancel");
+        }
+        if offer.status != TradeStatus::Open {
+            panic!("trade offer is not open");
+        }
+
+        let escrow = env.current_contract_address();
+        token::TokenClient::new(&env, &Self::token_addr(&env, &offer.offer_resource)).transfer(
+            &escrow,
+            &maker,
+            &offer.offer_amount,
+        );
+        offer.status = TradeStatus::Cancelled;
+        env.storage()
+            .persistent()
+            .set(&DataKey::TradeOffer(offer_id), &offer);
+        Self::remove_open_trade_offer(&env, offer_id);
+        env.events()
+            .publish((Symbol::new(&env, "trade_cancelled"), maker), offer_id);
+    }
+
+    pub fn get_open_trade_offers(env: Env, offset: u32, limit: u32) -> Vec<TradeOffer> {
+        if limit > MAX_TRADE_PAGE_SIZE {
+            panic!("trade page limit exceeded");
+        }
+        let open_offers = Self::open_trade_offer_ids(&env);
+        let now = env.ledger().timestamp();
+        let mut skipped = 0;
+        let mut index = 0;
+        let mut offers = Vec::new(&env);
+        while index < open_offers.len() && offers.len() < limit {
+            let offer_id = open_offers
+                .get(index)
+                .expect("open trade offer index missing");
+            let offer: TradeOffer = env
+                .storage()
+                .persistent()
+                .get(&DataKey::TradeOffer(offer_id))
+                .expect("trade offer not found");
+            if offer.expires_at > now {
+                if skipped < offset {
+                    skipped += 1;
+                } else {
+                    offers.push_back(offer);
+                }
+            }
+            index += 1;
+        }
+        offers
+    }
+
     /// Clears every system's mining timer for a new season. Admin only.
     ///
     /// Sets each timer to now rather than clearing it: `mining_start` falls
@@ -335,6 +526,29 @@ impl ResourcesContract {
         let token_addr = Self::token_addr(env, &ResourceType::Plasma);
         let client = token::TokenClient::new(env, &token_addr);
         client.burn(player, &amount);
+    }
+
+    fn remove_open_trade_offer(env: &Env, offer_id: u64) {
+        let mut open_offers = Self::open_trade_offer_ids(env);
+        let mut index = 0;
+        while index < open_offers.len() {
+            if open_offers.get(index) == Some(offer_id) {
+                open_offers.remove(index);
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::OpenTradeOffers, &open_offers);
+                return;
+            }
+            index += 1;
+        }
+        panic!("open trade offer not found");
+    }
+
+    fn open_trade_offer_ids(env: &Env) -> Vec<u64> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::OpenTradeOffers)
+            .unwrap_or(Vec::new(env))
     }
 
     fn token_addr(env: &Env, resource: &ResourceType) -> Address {

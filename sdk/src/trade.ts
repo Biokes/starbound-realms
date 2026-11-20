@@ -1,6 +1,5 @@
-import { StarboundClient } from './client.js';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+import { Contract, nativeToScVal, scValToNative, xdr } from '@stellar/stellar-sdk';
+import { StarboundClient, TransactionSigner } from './client.js';
 
 export type ResourceType = 'Iron' | 'Energy' | 'Plasma';
 
@@ -13,94 +12,113 @@ export interface TradeOffer {
   wantAmount: bigint;
   status: 'open' | 'accepted' | 'cancelled';
   createdAt: number;
+  expiresAt: number;
 }
 
-// ── Client ────────────────────────────────────────────────────────────────────
+interface RawTradeOffer {
+  offer_id: bigint;
+  maker: string;
+  offer_resource: string[];
+  offer_amount: bigint;
+  want_resource: string[];
+  want_amount: bigint;
+  status: string[];
+  created_at: bigint;
+  expires_at: bigint;
+}
 
-/**
- * Wraps the backend trade API endpoints and the on-chain trade contract.
- *
- * All write methods follow the same signer pattern used throughout the SDK:
- * they build a transaction, pass its XDR to `signer`, and submit the
- * signed result. The backend exposes `GET /trades` for browsing and
- * `POST /trades` / `POST /trades/:id/accept` for mutations that are
- * reflected off-chain until an indexer picks them up.
- */
+/** SDK client for escrowed offers in the resources contract. */
 export class TradeClient {
-  constructor(
-    private readonly client: StarboundClient,
-    private readonly backendUrl: string
-  ) {}
+  constructor(private readonly client: StarboundClient) {}
 
-  /** Lists open trade offers, newest first. */
+  /** Lists non-expired open offers using offset pagination. */
   async listOffers(limit = 20, offset = 0): Promise<TradeOffer[]> {
-    const url = `${this.backendUrl}/trades?limit=${limit}&offset=${offset}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to fetch trades: ${res.status}`);
-    const { trades } = (await res.json()) as { trades: RawTradeOffer[] };
-    return trades.map(toTradeOffer);
+    const raw = (await this.client.simulateReadCall(
+      this.client.contractIds.resources,
+      'get_open_trade_offers',
+      [nativeToScVal(offset, { type: 'u32' }), nativeToScVal(limit, { type: 'u32' })]
+    )) as RawTradeOffer[];
+    return raw.map(toTradeOffer);
   }
 
-  /**
-   * Records a new offer via the backend. The backend is the source-of-truth
-   * for off-chain offer state until a smart contract is deployed.
-   */
+  /** Creates an escrowed offer and returns its on-chain ID. */
   async createOffer(
     maker: string,
     offerResource: ResourceType,
     offerAmount: bigint,
     wantResource: ResourceType,
-    wantAmount: bigint
-  ): Promise<TradeOffer> {
-    const res = await fetch(`${this.backendUrl}/trades`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        maker,
-        offer_resource: offerResource,
-        offer_amount: offerAmount.toString(),
-        want_resource: wantResource,
-        want_amount: wantAmount.toString(),
-      }),
-    });
-    if (!res.ok) throw new Error(`Failed to create offer: ${res.status}`);
-    const { trade } = (await res.json()) as { trade: RawTradeOffer };
-    return toTradeOffer(trade);
+    wantAmount: bigint,
+    expiresAt: number,
+    sign: TransactionSigner
+  ): Promise<number> {
+    const result = await this.submit(maker, 'create_trade_offer', [
+      nativeToScVal(maker, { type: 'address' }),
+      resourceTypeToScVal(offerResource),
+      nativeToScVal(offerAmount, { type: 'i128' }),
+      resourceTypeToScVal(wantResource),
+      nativeToScVal(wantAmount, { type: 'i128' }),
+      nativeToScVal(BigInt(expiresAt), { type: 'u64' }),
+    ], sign);
+    return Number(scValToNative(result.returnValue!));
   }
 
-  /** Accepts an open offer. */
-  async acceptOffer(offerId: number, taker: string): Promise<void> {
-    const res = await fetch(`${this.backendUrl}/trades/${offerId}/accept`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ taker }),
+  /** Accepts an offer, atomically transferring both resources on-chain. */
+  async acceptOffer(offerId: number, taker: string, sign: TransactionSigner): Promise<void> {
+    await this.submit(taker, 'accept_trade_offer', [
+      nativeToScVal(taker, { type: 'address' }),
+      nativeToScVal(BigInt(offerId), { type: 'u64' }),
+    ], sign);
+  }
+
+  /** Cancels an open offer and returns its escrow to the maker. */
+  async cancelOffer(offerId: number, maker: string, sign: TransactionSigner): Promise<void> {
+    await this.submit(maker, 'cancel_trade_offer', [
+      nativeToScVal(maker, { type: 'address' }),
+      nativeToScVal(BigInt(offerId), { type: 'u64' }),
+    ], sign);
+  }
+
+  private submit(sourceAddress: string, method: string, args: xdr.ScVal[], sign: TransactionSigner) {
+    return this.client.submitTransaction({
+      sourceAddress,
+      operation: new Contract(this.client.contractIds.resources).call(method, ...args),
+      sign,
     });
-    if (!res.ok) throw new Error(`Failed to accept offer: ${res.status}`);
   }
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
-interface RawTradeOffer {
-  offer_id: string | number;
-  maker: string;
-  offer_resource: string;
-  offer_amount: string;
-  want_resource: string;
-  want_amount: string;
-  status: string;
-  created_at: string;
+function resourceTypeToScVal(resource: ResourceType): xdr.ScVal {
+  return xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(resource)]);
 }
 
 function toTradeOffer(raw: RawTradeOffer): TradeOffer {
   return {
     offerId: Number(raw.offer_id),
     maker: raw.maker,
-    offerResource: raw.offer_resource as ResourceType,
-    offerAmount: BigInt(raw.offer_amount),
-    wantResource: raw.want_resource as ResourceType,
-    wantAmount: BigInt(raw.want_amount),
-    status: raw.status as TradeOffer['status'],
-    createdAt: Date.parse(raw.created_at),
+    offerResource: parseResource(raw.offer_resource),
+    offerAmount: raw.offer_amount,
+    wantResource: parseResource(raw.want_resource),
+    wantAmount: raw.want_amount,
+    status: parseStatus(raw.status),
+    createdAt: Number(raw.created_at),
+    expiresAt: Number(raw.expires_at),
   };
+}
+
+function parseResource(value: string[]): ResourceType {
+  if (value.length !== 1) throw new Error('Invalid trade resource returned by contract');
+  const resource = value[0];
+  if (resource !== 'Iron' && resource !== 'Energy' && resource !== 'Plasma') {
+    throw new Error(`Unknown trade resource returned by contract: ${resource}`);
+  }
+  return resource;
+}
+
+function parseStatus(value: string[]): TradeOffer['status'] {
+  if (value.length !== 1) throw new Error('Invalid trade status returned by contract');
+  const status = value[0];
+  if (status === 'Open') return 'open';
+  if (status === 'Accepted') return 'accepted';
+  if (status === 'Cancelled') return 'cancelled';
+  throw new Error(`Unknown trade status returned by contract: ${status}`);
 }
