@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Recently active players widget** — landing page lists the most recently active players, backed by a new `GET /player/recent` route (#311)
+- **Full-stack backend integration test** — mock Soroban RPC → real indexer/processor → dockerized Postgres → API routes, run via `pnpm test` (#309)
+- **`getNetworkInfo` example** — SDK README section and runnable `sdk/examples/network-info.ts` (#310)
+- **Grid-boundary movement tests** — `move_fleet` coverage for the (0,0) and max-coordinate corners, including no wrap-around (#308)
+
+### Changed
+- `docker-compose.yml` Postgres host port is configurable via `POSTGRES_PORT` and the service has a `pg_isready` healthcheck (#309)
+- `startIndexer` accepts `allowHttp` for local/test RPC endpoints (#309)
+
+### Fixed
+- Fleet contract test mock `StarSystem` was missing `upgrade_level`, so the fleet tests did not compile (#308)
+
 ---
 
 ## October 2026
