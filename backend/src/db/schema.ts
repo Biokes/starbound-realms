@@ -85,6 +85,15 @@ export const CREATE_TRADE_OFFERS_TABLE = `
     ledger_sequence BIGINT NOT NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
+export const CREATE_NOTIFICATIONS_TABLE = `
+  CREATE TABLE IF NOT EXISTS notifications (
+    id              BIGSERIAL PRIMARY KEY,
+    player          VARCHAR(56) NOT NULL,
+    type            VARCHAR(32) NOT NULL,
+    message         TEXT NOT NULL,
+    payload         JSONB,
+    read            BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW()
   );
 `;
 
@@ -96,4 +105,5 @@ export const ALL_TABLES = [
   CREATE_INDEXER_STATE_TABLE,
   CREATE_FLEET_SNAPSHOTS_TABLE,
   CREATE_TRADE_OFFERS_TABLE,
+  CREATE_NOTIFICATIONS_TABLE,
 ];

@@ -12,6 +12,7 @@ import {
   removeAllianceMember,
   saveTradeOffer,
   updateTradeOfferStatus,
+  createNotification,
   saveGalaxyEvent,
   insertTradeOffer,
   acceptTradeOffer,
@@ -24,8 +25,18 @@ export interface ContractEvent {
   ledgerSequence: number;
 }
 
+/**
+ * Optional callback invoked after a relevant event is successfully persisted.
+ * Used by the WebSocket server (#220) to broadcast push updates to connected clients.
+ */
+export type EventBroadcaster = (event: ContractEvent) => void;
+
 /** Routes a contract event to the correct handler based on its topic */
-export async function processEvent(db: Pool, event: ContractEvent): Promise<void> {
+export async function processEvent(
+  db: Pool,
+  event: ContractEvent,
+  broadcast?: EventBroadcaster
+): Promise<void> {
   const topic = event.topic[0];
 
   switch (topic) {
@@ -82,8 +93,11 @@ export async function processEvent(db: Pool, event: ContractEvent): Promise<void
       break;
     default:
       // Unknown event — skip silently
-      break;
+      return;
   }
+
+  // Broadcast to WebSocket clients after successful persistence (#220).
+  broadcast?.(event);
 }
 
 function getTradeOfferId(event: ContractEvent): string {
@@ -138,6 +152,25 @@ async function processBattleResolved(db: Pool, event: ContractEvent): Promise<vo
   const { battle_id, attacker, defender, system_id, winner, rounds } = event.value;
 
   await saveBattle(db, battle_id, attacker, defender, system_id, winner, rounds, event.ledgerSequence);
+
+  // Notify the loser (#217)
+  const loser = winner === attacker ? defender : attacker;
+  await createNotification(db, loser, 'battle_lost', `You lost a battle at system ${system_id}.`, {
+    battle_id: String(battle_id),
+    attacker,
+    defender,
+    system_id,
+    winner,
+    rounds,
+  });
+  await createNotification(db, winner, 'battle_won', `You won a battle at system ${system_id}.`, {
+    battle_id: String(battle_id),
+    attacker,
+    defender,
+    system_id,
+    winner,
+    rounds,
+  });
 }
 
 /** Handles minted event — topic: ["minted", player], value: [ResourceType, amount] */
@@ -213,6 +246,11 @@ async function processAllianceJoined(db: Pool, event: ContractEvent): Promise<vo
   const allianceId = Array.isArray(event.value) ? event.value[0] : event.value;
 
   await addAllianceMember(db, Number(allianceId), player, 'member');
+
+  // Notify the player that they joined an alliance (#217)
+  await createNotification(db, player, 'alliance_joined', `You joined alliance ${allianceId}.`, {
+    alliance_id: Number(allianceId),
+  });
 }
 
 /**
@@ -223,6 +261,9 @@ async function processAllianceLeft(db: Pool, event: ContractEvent): Promise<void
   const player = event.topic[1];
 
   await removeAllianceMember(db, player);
+
+  // Notify the player that they left an alliance (#217)
+  await createNotification(db, player, 'alliance_left', 'You left your alliance.', null);
 }
 
 /**

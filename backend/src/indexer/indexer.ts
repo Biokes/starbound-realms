@@ -2,6 +2,7 @@ import { rpc } from '@stellar/stellar-sdk';
 import { Pool } from 'pg';
 import { runIndexerPollCycle, startEventListener, EventListenerHandle } from './eventListener';
 import { fetchIndexerCursor, saveIndexerCursor } from '../db/queries';
+import { EventBroadcaster } from './processor';
 
 /** A poll cycle that returns the ledger the next cycle should resume from. */
 export type PollCycle = (startLedger: number) => Promise<number>;
@@ -33,6 +34,11 @@ export interface StartIndexerOptions {
    * the stellar-sdk refuses non-https endpoints by default.
    */
   allowHttp?: boolean;
+  /**
+   * Optional WebSocket broadcaster (#220). When provided, the indexer will
+   * call it after each event is persisted so connected clients receive a push.
+   */
+  broadcast?: EventBroadcaster;
 }
 
 /**
@@ -45,7 +51,7 @@ export async function startIndexer(options: StartIndexerOptions): Promise<EventL
 
   return startEventListener({
     runPollCycle: createPersistingPollCycle(
-      (ledger) => runIndexerPollCycle(server, options.db, options.contractIds, ledger),
+      (ledger) => runIndexerPollCycle(server, options.db, options.contractIds, ledger, options.broadcast),
       (ledger) => saveIndexerCursor(options.db, ledger)
     ),
     startLedger,

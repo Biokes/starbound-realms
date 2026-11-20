@@ -7,6 +7,7 @@ vi.mock('../../db/queries', () => ({
   fetchBattlesByPlayer: vi.fn(),
   fetchAllianceByPlayer: vi.fn(),
   fetchRecentlyActivePlayers: vi.fn(),
+  fetchNotificationsByPlayer: vi.fn(),
 }));
 
 import {
@@ -14,6 +15,7 @@ import {
   fetchBattlesByPlayer,
   fetchAllianceByPlayer,
   fetchRecentlyActivePlayers,
+  fetchNotificationsByPlayer,
 } from '../../db/queries';
 import { createPlayerRouter } from './player';
 
@@ -38,6 +40,7 @@ beforeEach(() => {
   vi.mocked(fetchBattlesByPlayer).mockClear();
   vi.mocked(fetchAllianceByPlayer).mockClear();
   vi.mocked(fetchRecentlyActivePlayers).mockClear();
+  vi.mocked(fetchNotificationsByPlayer).mockClear();
 });
 
 // ── GET /player/recent ────────────────────────────────────────────────────────
@@ -193,5 +196,55 @@ describe('GET /player/:address/alliance', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ alliance });
     expect(fetchAllianceByPlayer).toHaveBeenCalledWith(db, VALID_ADDRESS);
+  });
+});
+
+// ── GET /player/:address/notifications (#217) ─────────────────────────────────
+
+describe('GET /player/:address/notifications', () => {
+  it('returns 400 for a malformed address without querying the database', async () => {
+    const res = await request(buildApp()).get('/player/BADADDR/notifications');
+
+    expect(res.status).toBe(400);
+    expect(fetchNotificationsByPlayer).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty notifications list when the player has none', async () => {
+    vi.mocked(fetchNotificationsByPlayer).mockResolvedValue([]);
+
+    const res = await request(buildApp()).get(`/player/${VALID_ADDRESS}/notifications`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ notifications: [] });
+    expect(fetchNotificationsByPlayer).toHaveBeenCalledWith(db, VALID_ADDRESS);
+  });
+
+  it('returns notification rows for a known address', async () => {
+    const rows = [
+      {
+        id: 1,
+        player: VALID_ADDRESS,
+        type: 'battle_lost',
+        message: 'You lost a battle at system 5.',
+        payload: { system_id: 5 },
+        read: false,
+        created_at: '2026-11-20T10:00:00.000Z',
+      },
+    ];
+    vi.mocked(fetchNotificationsByPlayer).mockResolvedValue(rows);
+
+    const res = await request(buildApp()).get(`/player/${VALID_ADDRESS}/notifications`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ notifications: rows });
+  });
+
+  it('forwards database errors to the error handler', async () => {
+    vi.mocked(fetchNotificationsByPlayer).mockRejectedValue(new Error('db down'));
+
+    const res = await request(buildApp()).get(`/player/${VALID_ADDRESS}/notifications`);
+
+    expect(res.status).toBe(500);
+    expect(res.body).toHaveProperty('error', 'db down');
   });
 });

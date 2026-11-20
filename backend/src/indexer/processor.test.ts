@@ -11,6 +11,7 @@ vi.mock('../db/queries', () => ({
   createAlliance: vi.fn(),
   addAllianceMember: vi.fn(),
   removeAllianceMember: vi.fn(),
+  createNotification: vi.fn(),
 }));
 
 import {
@@ -24,6 +25,7 @@ import {
   createAlliance,
   addAllianceMember,
   removeAllianceMember,
+  createNotification,
 } from '../db/queries';
 import { processEvent, ContractEvent } from './processor';
 
@@ -40,6 +42,7 @@ beforeEach(() => {
   vi.mocked(createAlliance).mockClear();
   vi.mocked(addAllianceMember).mockClear();
   vi.mocked(removeAllianceMember).mockClear();
+  vi.mocked(createNotification).mockClear();
 });
 
 describe('processEvent — claimed', () => {
@@ -319,5 +322,130 @@ describe('processEvent — unknown topics', () => {
     expect(addAllianceMember).not.toHaveBeenCalled();
     expect(removeAllianceMember).not.toHaveBeenCalled();
     expect(upsertStarSystem).not.toHaveBeenCalled();
+  });
+});
+
+// ── Notifications (#217) ──────────────────────────────────────────────────────
+
+describe('processEvent — battle_resolved creates notifications', () => {
+  it('creates a battle_lost notification for the loser and battle_won for the winner', async () => {
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['battle_resolved'],
+      value: {
+        battle_id: 1n,
+        attacker: 'GATTACKER' + 'A'.repeat(47),
+        defender: 'GDEFENDER' + 'A'.repeat(47),
+        system_id: 5,
+        winner: 'GATTACKER' + 'A'.repeat(47),
+        rounds: 2,
+      },
+      ledgerSequence: 300,
+    };
+
+    await processEvent(db, event);
+
+    const winner = 'GATTACKER' + 'A'.repeat(47);
+    const loser = 'GDEFENDER' + 'A'.repeat(47);
+
+    expect(createNotification).toHaveBeenCalledWith(
+      db,
+      loser,
+      'battle_lost',
+      expect.stringContaining('system 5'),
+      expect.any(Object)
+    );
+    expect(createNotification).toHaveBeenCalledWith(
+      db,
+      winner,
+      'battle_won',
+      expect.stringContaining('system 5'),
+      expect.any(Object)
+    );
+  });
+});
+
+describe('processEvent — alliance_joined creates notification', () => {
+  it('notifies the player that they joined an alliance', async () => {
+    const event: ContractEvent = {
+      contractId: 'C_ALLIANCE',
+      topic: ['alliance_joined', 'GPLAYER' + 'A'.repeat(49)],
+      value: 7,
+      ledgerSequence: 1100,
+    };
+
+    await processEvent(db, event);
+
+    expect(createNotification).toHaveBeenCalledWith(
+      db,
+      'GPLAYER' + 'A'.repeat(49),
+      'alliance_joined',
+      expect.stringContaining('7'),
+      expect.any(Object)
+    );
+  });
+});
+
+describe('processEvent — alliance_left creates notification', () => {
+  it('notifies the player that they left an alliance', async () => {
+    const event: ContractEvent = {
+      contractId: 'C_ALLIANCE',
+      topic: ['alliance_left', 'GPLAYER' + 'A'.repeat(49)],
+      value: 7,
+      ledgerSequence: 1200,
+    };
+
+    await processEvent(db, event);
+
+    expect(createNotification).toHaveBeenCalledWith(
+      db,
+      'GPLAYER' + 'A'.repeat(49),
+      'alliance_left',
+      expect.any(String),
+      null
+    );
+  });
+});
+
+// ── WebSocket broadcast (#220) ────────────────────────────────────────────────
+
+describe('processEvent — broadcast callback', () => {
+  it('calls the broadcast callback after a known event is handled', async () => {
+    const broadcast = vi.fn();
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['claimed', 'GPLAYER' + 'A'.repeat(49)],
+      value: 3,
+      ledgerSequence: 100,
+    };
+
+    await processEvent(db, event, broadcast);
+
+    expect(broadcast).toHaveBeenCalledWith(event);
+  });
+
+  it('does not call broadcast for unknown events', async () => {
+    const broadcast = vi.fn();
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['unknown_event'],
+      value: {},
+      ledgerSequence: 400,
+    };
+
+    await processEvent(db, event, broadcast);
+
+    expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('is optional — processEvent still works without a broadcast callback', async () => {
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['claimed', 'GPLAYER' + 'A'.repeat(49)],
+      value: 3,
+      ledgerSequence: 100,
+    };
+
+    await expect(processEvent(db, event)).resolves.toBeUndefined();
   });
 });
