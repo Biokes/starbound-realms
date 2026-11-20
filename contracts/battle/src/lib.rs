@@ -13,6 +13,11 @@ pub enum DataKey {
     NextBattleId,
     Battle(u64),
     Initialized,
+    /// Pending proposal: proposer -> addressee. Cleared once accepted.
+    PactProposal(Address, Address),
+    /// Active pact between two players (always stored with the lower address first
+    /// so the key is the same regardless of which side you query from).
+    Pact(Address, Address),
 }
 
 // ── Types ────────────────────────────────────────────────────────────[...]
@@ -61,6 +66,18 @@ pub struct StarSystem {
     pub defense_rating: u32,
     pub last_claimed: u64,
     pub upgrade_level: u32,
+}
+
+/// Status of a pact between two players, as seen by the caller.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum PactStatus {
+    /// No proposal or active pact exists.
+    None,
+    /// A proposal has been made but the second party has not yet accepted.
+    Proposed,
+    /// Both parties have accepted — battle between them is blocked.
+    Active,
 }
 
 /// The slice of the galaxy-map contract this contract depends on.
@@ -155,6 +172,10 @@ impl BattleContract {
     pub fn resolve_battle(env: Env, attacker: Address, defender: Address, system_id: u32) -> u64 {
         attacker.require_auth();
 
+        if has_active_pact(&env, &attacker, &defender) {
+            panic!("cannot attack a player you have an active pact with");
+        }
+
         let galaxy_map = fetch_galaxy_map_client(&env);
         let fleet_contract = fetch_fleet_client(&env);
 
@@ -198,6 +219,74 @@ impl BattleContract {
         battle_id
     }
 
+    // ── Pact functions ────────────────────────────────────────────────────────
+
+    /// Proposes a non-aggression pact from `proposer` to `addressee`.
+    ///
+    /// If the addressee has already proposed a pact to the proposer, calling
+    /// this will immediately activate the pact (mutual acceptance shortcut).
+    ///
+    /// # Panics
+    /// * Panics if `proposer` does not authorize the call.
+    /// * Panics if an active pact already exists between the two players.
+    /// * Panics if `proposer` tries to propose a pact with themselves.
+    pub fn propose_pact(env: Env, proposer: Address, addressee: Address) {
+        proposer.require_auth();
+
+        if proposer == addressee {
+            panic!("cannot propose a pact with yourself");
+        }
+
+        if has_active_pact(&env, &proposer, &addressee) {
+            panic!("pact already active");
+        }
+
+        // If the other side has already proposed, accept immediately.
+        let reverse_key = DataKey::PactProposal(addressee.clone(), proposer.clone());
+        if env.storage().persistent().has(&reverse_key) {
+            env.storage().persistent().remove(&reverse_key);
+            set_active_pact(&env, &proposer, &addressee);
+            env.events().publish(
+                (Symbol::new(&env, "pact_accepted"), proposer.clone()),
+                addressee.clone(),
+            );
+            return;
+        }
+
+        let proposal_key = DataKey::PactProposal(proposer.clone(), addressee.clone());
+        env.storage().persistent().set(&proposal_key, &true);
+        env.events().publish(
+            (Symbol::new(&env, "pact_proposed"), proposer),
+            addressee,
+        );
+    }
+
+    /// Accepts a pending pact proposal from `proposer` directed at `acceptor`.
+    ///
+    /// # Panics
+    /// * Panics if `acceptor` does not authorize the call.
+    /// * Panics if no proposal from `proposer` to `acceptor` exists.
+    /// * Panics if an active pact already exists between the two players.
+    pub fn accept_pact(env: Env, acceptor: Address, proposer: Address) {
+        acceptor.require_auth();
+
+        let proposal_key = DataKey::PactProposal(proposer.clone(), acceptor.clone());
+        if !env.storage().persistent().has(&proposal_key) {
+            panic!("no pending proposal from that player");
+        }
+
+        if has_active_pact(&env, &acceptor, &proposer) {
+            panic!("pact already active");
+        }
+
+        env.storage().persistent().remove(&proposal_key);
+        set_active_pact(&env, &acceptor, &proposer);
+        env.events().publish(
+            (Symbol::new(&env, "pact_accepted"), acceptor.clone()),
+            proposer.clone(),
+        );
+    }
+
     // ── View functions ────────────────────────────────────────────────────────[...]
 
     /// Returns the stored battle result for a given battle ID.
@@ -215,6 +304,19 @@ impl BattleContract {
             .persistent()
             .get(&DataKey::Battle(battle_id))
             .expect("battle not found")
+    }
+
+    /// Returns the pact status between two players.
+    pub fn get_pact_status(env: Env, a: Address, b: Address) -> PactStatus {
+        if has_active_pact(&env, &a, &b) {
+            return PactStatus::Active;
+        }
+        if env.storage().persistent().has(&DataKey::PactProposal(a.clone(), b.clone()))
+            || env.storage().persistent().has(&DataKey::PactProposal(b, a))
+        {
+            return PactStatus::Proposed;
+        }
+        PactStatus::None
     }
 }
 
@@ -284,6 +386,20 @@ fn apply_losses_if_any(env: &Env, fleet_contract: &FleetClient, player: &Address
     if !is_fleet_empty(&losses) {
         fleet_contract.apply_battle_losses(&env.current_contract_address(), player, &losses);
     }
+}
+
+/// Returns true if an active pact exists between `a` and `b`.
+/// Checks both key orderings since we always write under both.
+fn has_active_pact(env: &Env, a: &Address, b: &Address) -> bool {
+    env.storage().persistent().has(&DataKey::Pact(a.clone(), b.clone()))
+        || env.storage().persistent().has(&DataKey::Pact(b.clone(), a.clone()))
+}
+
+/// Sets the active pact between two players. Writes under both orderings so
+/// that `has_active_pact` finds it regardless of argument order.
+fn set_active_pact(env: &Env, a: &Address, b: &Address) {
+    env.storage().persistent().set(&DataKey::Pact(a.clone(), b.clone()), &true);
+    env.storage().persistent().set(&DataKey::Pact(b.clone(), a.clone()), &true);
 }
 
 // ── Combat math ───────────────────────────────────────────────────────────[...]
@@ -436,6 +552,7 @@ mod tests {
                 resource_yield: 10,
                 defense_rating,
                 last_claimed: 0,
+                upgrade_level: 0,
             };
             env.storage().instance().set(&symbol_short!("system"), &system);
         }
@@ -802,5 +919,165 @@ mod tests {
         let (client, _) = setup_battle(&env);
 
         client.get_battle(&1);
+    }
+
+    // ── pact tests ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn propose_pact_emits_pact_proposed_event() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        fx.client.propose_pact(&alice, &bob);
+
+        let events = env.events().all();
+        let (_, topics, data) = events
+            .into_iter()
+            .filter(|(c, _, _)| *c == fx.client.address)
+            .last()
+            .unwrap();
+        assert_eq!(
+            topics,
+            (Symbol::new(&env, "pact_proposed"), alice.clone()).into_val(&env)
+        );
+        let emitted_addressee: Address = data.into_val(&env);
+        assert_eq!(emitted_addressee, bob);
+    }
+
+    #[test]
+    fn after_propose_status_is_proposed() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        fx.client.propose_pact(&alice, &bob);
+
+        assert_eq!(fx.client.get_pact_status(&alice, &bob), PactStatus::Proposed);
+        // Symmetric query
+        assert_eq!(fx.client.get_pact_status(&bob, &alice), PactStatus::Proposed);
+    }
+
+    #[test]
+    fn accept_pact_activates_the_pact_and_emits_event() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        fx.client.propose_pact(&alice, &bob);
+        fx.client.accept_pact(&bob, &alice);
+
+        assert_eq!(fx.client.get_pact_status(&alice, &bob), PactStatus::Active);
+        assert_eq!(fx.client.get_pact_status(&bob, &alice), PactStatus::Active);
+
+        let events = env.events().all();
+        let (_, topics, data) = events
+            .into_iter()
+            .filter(|(c, _, _)| *c == fx.client.address)
+            .last()
+            .unwrap();
+        assert_eq!(
+            topics,
+            (Symbol::new(&env, "pact_accepted"), bob.clone()).into_val(&env)
+        );
+        let emitted_proposer: Address = data.into_val(&env);
+        assert_eq!(emitted_proposer, alice);
+    }
+
+    #[test]
+    fn proposing_from_both_sides_activates_pact_immediately() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        fx.client.propose_pact(&alice, &bob);
+        // Bob proposes back — should activate without a separate accept call.
+        fx.client.propose_pact(&bob, &alice);
+
+        assert_eq!(fx.client.get_pact_status(&alice, &bob), PactStatus::Active);
+    }
+
+    #[test]
+    fn no_pact_status_before_any_interaction() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        assert_eq!(fx.client.get_pact_status(&alice, &bob), PactStatus::None);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot propose a pact with yourself")]
+    fn cannot_propose_pact_with_yourself() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+
+        fx.client.propose_pact(&alice, &alice);
+    }
+
+    #[test]
+    #[should_panic(expected = "pact already active")]
+    fn proposing_when_pact_is_already_active_panics() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        fx.client.propose_pact(&alice, &bob);
+        fx.client.accept_pact(&bob, &alice);
+        // Should panic — pact is already active.
+        fx.client.propose_pact(&alice, &bob);
+    }
+
+    #[test]
+    #[should_panic(expected = "no pending proposal from that player")]
+    fn accepting_a_non_existent_proposal_panics() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let alice = Address::generate(&env);
+        let bob = Address::generate(&env);
+
+        fx.client.accept_pact(&bob, &alice);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot attack a player you have an active pact with")]
+    fn resolve_battle_is_blocked_between_pact_holders() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let attacker = Address::generate(&env);
+        let defender = Address::generate(&env);
+
+        // Establish a pact.
+        fx.client.propose_pact(&attacker, &defender);
+        fx.client.accept_pact(&defender, &attacker);
+
+        // Try to attack anyway — must panic.
+        fx.galaxy.seed_system(&defender, &5);
+        fx.fleet.seed_fleet(&attacker, &fleet_of(0, 0, 0, 50));
+        fx.fleet.seed_fleet(&defender, &fleet_of(1, 0, 0, 0));
+        fx.client.resolve_battle(&attacker, &defender, &1);
+    }
+
+    #[test]
+    fn resolve_battle_proceeds_normally_without_a_pact() {
+        // Regression: adding pact check must not break the happy path.
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let attacker = Address::generate(&env);
+        let defender = Address::generate(&env);
+        fx.galaxy.seed_system(&defender, &5);
+        fx.fleet.seed_fleet(&attacker, &fleet_of(0, 0, 0, 50));
+        fx.fleet.seed_fleet(&defender, &fleet_of(1, 0, 0, 0));
+
+        let battle_id = fx.client.resolve_battle(&attacker, &defender, &1);
+
+        assert_eq!(fx.client.get_battle(&battle_id).winner, attacker);
     }
 }
