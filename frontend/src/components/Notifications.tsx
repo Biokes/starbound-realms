@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useNotificationsData } from '../hooks/useNotifications';
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
@@ -129,4 +130,37 @@ export function useNotification(message: string | null | undefined): void {
     const id = notify(message);
     return () => dismiss(id);
   }, [message, notify, dismiss]);
+}
+
+// ── Backend bridge (#218) ─────────────────────────────────────────────────────
+
+/**
+ * Polls the backend for real per-player notifications and surfaces any new
+ * unread ones as toasts via the `NotificationProvider` context.
+ *
+ * Mount this once inside `NotificationProvider` when a wallet is connected.
+ * It tracks which notification ids have already been shown so re-polls don't
+ * re-display the same message.
+ */
+export function BackendNotificationsBridge({
+  backendUrl,
+  address,
+}: {
+  backendUrl: string;
+  address: string | null;
+}) {
+  const { notify } = useNotifications();
+  const { notifications } = useNotificationsData(backendUrl, address);
+  const shownIds = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    for (const n of notifications) {
+      if (!n.read && !shownIds.current.has(n.id)) {
+        shownIds.current.add(n.id);
+        notify(n.message);
+      }
+    }
+  }, [notifications, notify]);
+
+  return null;
 }
