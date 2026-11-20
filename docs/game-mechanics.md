@@ -56,6 +56,18 @@ never prompts for a signature on its own.
 player-callable mining function yet, so each system's `resource_yield` and `last_claimed` are stored but not
 used. Passive mining (a player claiming their systems' yield) is planned, not implemented.
 
+### Player trading
+
+Players can create escrowed offers through the `resources` contract. The maker locks a positive amount
+of one resource and specifies a positive amount of a different resource plus a future ledger timestamp
+for expiry. Another player may accept before expiry; both token transfers occur in the same transaction.
+The maker may cancel at any time, including after expiry, to recover the escrow. Offers cannot be
+self-accepted, and expired offers are omitted from open-offer queries.
+
+Offers and their lifecycle are stored on-chain. The contract exposes paginated open offers and emits
+trade offered, accepted, and cancelled events. The SDK's `TradeClient` submits signed contract calls and
+reads open offers from Soroban. The resources contract must be upgraded before trading is available.
+
 ---
 
 ## Fleets
