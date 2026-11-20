@@ -33,7 +33,8 @@ export function getSystemAriaLabel(system: GalaxySystem, walletAddress: string |
       ? 'owned by you'
       : `owned by ${system.owner}`;
 
-  return `System ${system.systemId}, ${ownership}, resource ${system.resourceType}`;
+  const event = system.activeEvent ? `, active event: ${system.activeEvent.type}` : '';
+  return `System ${system.systemId}, ${ownership}, resource ${system.resourceType}${event}`;
 }
 
 /** Selects only cells in (or just outside) the visible vertical window. */
@@ -87,26 +88,50 @@ export function GalaxyMap({ systems, walletAddress, onSelectSystem }: GalaxyMapP
         aria-label="Galaxy map"
       >
       {visibleSystems.map((system) => (
-        <rect
-          key={system.systemId}
-          id={`galaxy-cell-${system.systemId}`}
-          data-testid={`galaxy-cell-${system.systemId}`}
-          x={system.coordX * (CELL_SIZE + CELL_GAP)}
-          y={system.coordY * (CELL_SIZE + CELL_GAP)}
-          width={CELL_SIZE}
-          height={CELL_SIZE}
-          rx={4}
-          fill={getSystemColor(system, walletAddress)}
-          stroke="var(--border)"
-          style={{ cursor: onSelectSystem ? 'pointer' : 'default' }}
-          role={onSelectSystem ? 'button' : 'img'}
-          tabIndex={onSelectSystem ? 0 : undefined}
-          aria-label={getSystemAriaLabel(system, walletAddress)}
-          onClick={(event) => selectSystem(system.systemId, event.currentTarget)}
-          onKeyDown={(event) => handleCellKeyDown(event, system.systemId)}
-        >
-          <title>{`System ${system.systemId} — ${system.resourceType}`}</title>
-        </rect>
+        <g key={system.systemId}>
+          <rect
+            id={`galaxy-cell-${system.systemId}`}
+            data-testid={`galaxy-cell-${system.systemId}`}
+            x={system.coordX * (CELL_SIZE + CELL_GAP)}
+            y={system.coordY * (CELL_SIZE + CELL_GAP)}
+            width={CELL_SIZE}
+            height={CELL_SIZE}
+            rx={4}
+            fill={getSystemColor(system, walletAddress)}
+            stroke="var(--border)"
+            style={{ cursor: onSelectSystem ? 'pointer' : 'default' }}
+            role={onSelectSystem ? 'button' : 'img'}
+            tabIndex={onSelectSystem ? 0 : undefined}
+            aria-label={getSystemAriaLabel(system, walletAddress)}
+            onClick={(event) => selectSystem(system.systemId, event.currentTarget)}
+            onKeyDown={(event) => handleCellKeyDown(event, system.systemId)}
+          >
+            <title>{`System ${system.systemId} — ${system.resourceType}`}</title>
+          </rect>
+          {system.activeEvent && (
+            <g aria-hidden="true" pointerEvents="none">
+              <circle
+                cx={system.coordX * (CELL_SIZE + CELL_GAP) + CELL_SIZE - 6}
+                cy={system.coordY * (CELL_SIZE + CELL_GAP) + 6}
+                r={6}
+                fill="var(--red)"
+                stroke="var(--bg-card)"
+                strokeWidth={2}
+              />
+              <text
+                x={system.coordX * (CELL_SIZE + CELL_GAP) + CELL_SIZE - 6}
+                y={system.coordY * (CELL_SIZE + CELL_GAP) + 9}
+                textAnchor="middle"
+                fontSize={9}
+                fontWeight={700}
+                fill="white"
+              >
+                !
+              </text>
+              <title>{`${system.activeEvent.type}${system.activeEvent.details ? `: ${system.activeEvent.details}` : ''}`}</title>
+            </g>
+          )}
+        </g>
       ))}
       </svg>
     </div>

@@ -12,12 +12,20 @@ import { StarboundClient, TransactionSigner } from './client.js';
 export class AllianceClient {
   constructor(private readonly client: StarboundClient) {}
 
+  private getContractId(): string {
+    const contractId = this.client.contractIds.alliance;
+    if (!contractId) {
+      throw new Error('Alliance contract ID is not configured');
+    }
+    return contractId;
+  }
+
   async createAlliance(
     playerAddress: string,
     allianceName: string,
     sign: TransactionSigner
   ): Promise<void> {
-    const contract = new Contract(this.client.contractIds.alliance);
+    const contract = new Contract(this.getContractId());
     await this.client.submitTransaction({
       sourceAddress: playerAddress,
       operation: contract.call(
@@ -34,7 +42,7 @@ export class AllianceClient {
     allianceId: string,
     sign: TransactionSigner
   ): Promise<void> {
-    const contract = new Contract(this.client.contractIds.alliance);
+    const contract = new Contract(this.getContractId());
     await this.client.submitTransaction({
       sourceAddress: playerAddress,
       operation: contract.call(
@@ -51,7 +59,7 @@ export class AllianceClient {
     allianceId: string,
     sign: TransactionSigner
   ): Promise<void> {
-    const contract = new Contract(this.client.contractIds.alliance);
+    const contract = new Contract(this.getContractId());
     await this.client.submitTransaction({
       sourceAddress: playerAddress,
       operation: contract.call(
@@ -64,7 +72,7 @@ export class AllianceClient {
   }
 
   async getAlliance(allianceId: string): Promise<any> {
-    return this.client.simulateReadCall(this.client.contractIds.alliance, 'get_alliance', [
+    return this.client.simulateReadCall(this.getContractId(), 'get_alliance', [
       nativeToScVal(allianceId, { type: 'string' }),
     ]);
   }

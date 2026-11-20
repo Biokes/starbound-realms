@@ -9,6 +9,7 @@ export interface GalaxySystem {
   resourceYield: number;
   defenseRating: number;
   lastClaimed: number;
+  activeEvent?: { type: string; details?: string } | null;
 }
 
 /**
@@ -25,6 +26,7 @@ interface RawGalaxySystem {
   resource_yield: number;
   defense_rating: number;
   last_claimed: string;
+  active_event?: { type: string; details?: string } | null;
 }
 
 /** Maps the backend's snake_case row to the frontend's camelCase shape. */
@@ -38,6 +40,7 @@ function toGalaxySystem(raw: RawGalaxySystem): GalaxySystem {
     resourceYield: raw.resource_yield,
     defenseRating: raw.defense_rating,
     lastClaimed: Number(raw.last_claimed),
+    activeEvent: raw.active_event ?? null,
   };
 }
 

@@ -158,9 +158,9 @@ Combat algorithm:
 
 ### Indexer
 
-Polls Soroban RPC for contract events across all four contract IDs. Decodes and writes to PostgreSQL.
+Polls Soroban RPC for contract events across configured contract IDs. Decodes and writes to PostgreSQL.
 
-**Tables:** `star_systems`, `resource_events`, `fleet_snapshots`, `battles`, `players`
+**Tables:** `star_systems`, `resource_events`, `fleet_snapshots`, `battles`, `trade_offers`, `players`
 
 ### REST API (read-only)
 
@@ -173,6 +173,7 @@ Polls Soroban RPC for contract events across all four contract IDs. Decodes and 
 | GET | `/player/:address/battles` | Battle history |
 | GET | `/battles` | Recent battles (paginated) |
 | GET | `/battles/:battleId` | Single battle |
+| GET | `/trades` | Open trade offers |
 | GET | `/leaderboard` | Top players |
 
 ---
@@ -188,6 +189,7 @@ CONTRACT_GALAXY_MAP=C...
 CONTRACT_RESOURCES=C...
 CONTRACT_FLEET=C...
 CONTRACT_BATTLE=C...
+CONTRACT_ALLIANCE=C... # optional
 INDEXER_POLL_INTERVAL_MS=5000
 PORT=3000
 ```
@@ -201,6 +203,7 @@ VITE_CONTRACT_GALAXY_MAP=C...
 VITE_CONTRACT_RESOURCES=C...
 VITE_CONTRACT_FLEET=C...
 VITE_CONTRACT_BATTLE=C...
+VITE_CONTRACT_ALLIANCE=C... # optional; required to use AllianceClient
 ```
 
 ---
