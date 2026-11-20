@@ -121,3 +121,40 @@ There is no hard win condition — the galaxy is persistent. Players compete for
 - **System upgrades** — spend Plasma to increase a system's defense or yield
 - **Fleet specializations** — unit type bonuses against specific enemies
 - **Seasonal resets** — optional governance-triggered galaxy resets (proposal: [seasonal-reset-design.md](seasonal-reset-design.md))
+
+---
+
+## Random Galaxy Events (#205)
+
+The galaxy supports a periodic random-event system that creates emergent threats and
+opportunities without player input. Any account may call `galaxy-map.trigger_random_event`
+to attempt to fire an event; a per-contract cooldown (720 ledgers ≈ 1 hour) prevents
+spam.
+
+### Event list
+
+| Event | Effect on the targeted system | On-chain emission |
+|---|---|---|
+| **Pirate raid** | Reduces `defense_rating` by 3 (floored at 1) until the next event cycle | `pirate_raid(system_id, magnitude)` |
+| **Resource surge** | Increases `resource_yield` by 10 until the next event cycle | `resource_surge(system_id, bonus)` |
+
+### Trigger mechanism
+
+- **Who calls it**: anyone (the function is permissionless). In practice a cron job
+  or a motivated player calls it once an hour.
+- **Cooldown**: stored as `LastEventLedger` in contract instance storage. If fewer
+  than 720 ledgers have elapsed since the last trigger, the call is a no-op and
+  returns `false`.
+- **Randomness**: Soroban `Prng`, seeded by the current ledger sequence and contract
+  address (the same pattern used in `contracts/battle/src/lib.rs`). The target system
+  id is `prng.u64_in_range(0..total_systems)` and the event type rolls `prng.u64_in_range(0..2)`.
+  Outcomes are deterministic given the same ledger inputs and independently verifiable.
+- **Where it lives**: `contracts/galaxy-map/src/lib.rs` — the event modifies `StarSystem`
+  fields that already exist on that struct, so no new contract is needed.
+
+### Backend indexing (#207)
+
+A `galaxy_events` table records every on-chain occurrence. The processor handles
+`pirate_raid` and `resource_surge` topics and writes `(event_type, system_id, magnitude,
+ledger_sequence)` rows. `GET /events` returns recent occurrences paginated like `GET /battles`.
+

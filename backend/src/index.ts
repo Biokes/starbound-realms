@@ -7,6 +7,8 @@ import { createBattleRouter } from './api/routes/battle';
 import { createFleetRouter } from './api/routes/fleet';
 import { createLeaderboardRouter } from './api/routes/leaderboard';
 import { createTradeRouter } from './api/routes/trades';
+import { createTradeRouter } from './api/routes/trade';
+import { createEventsRouter } from './api/routes/events';
 import { standardLimiter, strictLimiter } from './api/middleware/rateLimit';
 import { errorHandler } from './api/middleware/errorHandler';
 import { startIndexer } from './indexer/indexer';
@@ -65,6 +67,7 @@ app.use('/battles', createBattleRouter(db));
 app.use('/fleet', createFleetRouter(db));
 app.use('/leaderboard', strictLimiter, createLeaderboardRouter(db));
 app.use('/trades', createTradeRouter(db));
+app.use('/events', createEventsRouter(db));
 
 // ── Error handler (must be last) ──────────────────────────────────────────────
 

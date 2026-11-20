@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, vec, Address, Env, Vec,
+    contract, contractimpl, contracttype, symbol_short, vec, Address, Env, Symbol, Vec,
 };
 
 // ── Storage Keys ─────────────────────────────────────────────────────────────
@@ -15,7 +15,22 @@ pub enum DataKey {
     GridSize,
     BattleContract,
     Initialized,
+    LastEventLedger,
 }
+
+// ── Event Types ───────────────────────────────────────────────────────────────
+
+/// Minimum ledger gap between consecutive random-event evaluations.
+/// At ~5 seconds per ledger, 720 ledgers ≈ 1 hour.
+pub const EVENT_COOLDOWN_LEDGERS: u32 = 720;
+
+/// A pirate raid temporarily reduces the system's defense_rating by this amount
+/// (floored at 1) until the next time `trigger_random_event` runs.
+pub const RAID_DEFENSE_PENALTY: u32 = 3;
+
+/// A resource surge temporarily adds this many units to the system's
+/// resource_yield until the next time `trigger_random_event` runs.
+pub const SURGE_YIELD_BONUS: u32 = 10;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -236,6 +251,90 @@ impl GalaxyMapContract {
     }
 
     // ── View functions ────────────────────────────────────────────────────────
+
+    /// Attempts to trigger a random galaxy event on a randomly-selected system.
+    ///
+    /// Uses Soroban `Prng` (seeded per-ledger, verifiable) to pick a system and
+    /// roll for event type. Two event types are possible:
+    ///
+    /// - **pirate_raid**: reduces the targeted system's `defense_rating` by
+    ///   [`RAID_DEFENSE_PENALTY`] (floored at 1) and emits a `pirate_raid` event.
+    /// - **resource_surge**: increases the targeted system's `resource_yield` by
+    ///   [`SURGE_YIELD_BONUS`] and emits a `resource_surge` event.
+    ///
+    /// A cooldown of [`EVENT_COOLDOWN_LEDGERS`] prevents back-to-back triggers in
+    /// the same hour. Any caller may invoke this, but nothing happens if the
+    /// cooldown has not elapsed since the last event.
+    ///
+    /// Returns `true` when an event was triggered, `false` when the cooldown
+    /// skipped the call.
+    pub fn trigger_random_event(env: Env) -> bool {
+        let current_ledger = env.ledger().sequence();
+        let last: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::LastEventLedger)
+            .unwrap_or(0);
+
+        if current_ledger < last + EVENT_COOLDOWN_LEDGERS {
+            return false;
+        }
+
+        let grid_size: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::GridSize)
+            .expect("not initialized");
+
+        if grid_size == 0 {
+            return false;
+        }
+
+        let total_systems = grid_size * grid_size;
+
+        // Soroban Prng is seeded by the current ledger + contract address,
+        // matching the pattern in contracts/battle/src/lib.rs.
+        let system_id: u32 = env.prng().gen_range::<u64>(0..total_systems as u64) as u32;
+        let event_roll: u64 = env.prng().gen_range::<u64>(0..2);
+
+        let mut system: StarSystem = env
+            .storage()
+            .persistent()
+            .get(&DataKey::System(system_id))
+            .expect("system not found");
+
+        if event_roll == 0 {
+            // Pirate raid: reduce defense, floor at 1.
+            let new_defense = system.defense_rating.saturating_sub(RAID_DEFENSE_PENALTY).max(1);
+            let magnitude = system.defense_rating - new_defense;
+            system.defense_rating = new_defense;
+            env.storage()
+                .persistent()
+                .set(&DataKey::System(system_id), &system);
+
+            env.events().publish(
+                (Symbol::new(&env, "pirate_raid"), system_id),
+                magnitude,
+            );
+        } else {
+            // Resource surge: increase yield.
+            system.resource_yield += SURGE_YIELD_BONUS;
+            env.storage()
+                .persistent()
+                .set(&DataKey::System(system_id), &system);
+
+            env.events().publish(
+                (Symbol::new(&env, "resource_surge"), system_id),
+                SURGE_YIELD_BONUS,
+            );
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::LastEventLedger, &current_ledger);
+
+        true
+    }
 
     pub fn get_system(env: Env, system_id: u32) -> StarSystem {
         env.storage()
