@@ -270,7 +270,7 @@ impl ResourcesContract {
         verify_player_owns_system(&system, &player);
 
         let cost = 100i128 * (system.upgrade_level + 1) as i128;
-        let balance = Self::balance(&env, player.clone(), ResourceType::Plasma);
+        let balance = Self::balance(env.clone(), player.clone(), ResourceType::Plasma);
 
         if balance < cost {
             panic!("insufficient plasma balance");
@@ -332,8 +332,8 @@ impl ResourcesContract {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn burn_plasma(env: &Env, player: &Address, amount: i128) {
-        let token_addr = Self::token_addr(&env, &ResourceType::Plasma);
-        let client = token::TokenClient::new(&env, &token_addr);
+        let token_addr = Self::token_addr(env, &ResourceType::Plasma);
+        let client = token::TokenClient::new(env, &token_addr);
         client.burn(player, &amount);
     }
 
@@ -601,6 +601,7 @@ mod tests {
                 resource_yield,
                 defense_rating: 5,
                 last_claimed,
+                upgrade_level: 0,
             };
             env.storage().instance().set(&symbol_short!("system"), &system);
         }
