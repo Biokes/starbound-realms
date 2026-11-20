@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, vec, Address, Env, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, vec, Address, Env, String, Symbol, Vec,
 };
 
 // ── Storage Keys ─────────────────────────────────────────────────────────────
@@ -16,6 +16,9 @@ pub enum DataKey {
     BattleContract,
     Initialized,
     LastEventLedger,
+    Alliance(u32),
+    PlayerAlliance(Address),
+    NextAllianceId,
 }
 
 // ── Event Types ───────────────────────────────────────────────────────────────
@@ -53,6 +56,15 @@ pub struct StarSystem {
     pub defense_rating: u32,
     pub last_claimed: u64,
     pub upgrade_level: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Alliance {
+    pub id: u32,
+    pub leader: Address,
+    pub name: String,
+    pub members: Vec<Address>,
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -385,6 +397,112 @@ impl GalaxyMapContract {
                 .set(&DataKey::System(id), &system);
             id += 1;
         }
+    }
+
+    /// Create a new alliance. The caller becomes the leader and first member.
+    /// Returns the new alliance id.
+    pub fn create_alliance(env: Env, leader: Address, name: String) -> u32 {
+        leader.require_auth();
+
+        let next_id: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextAllianceId)
+            .unwrap_or(0);
+        let alliance_id = next_id;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PlayerAlliance(leader.clone()), &alliance_id);
+
+        let alliance = Alliance {
+            id: alliance_id,
+            leader: leader.clone(),
+            name: name.clone(),
+            members: vec![&env, leader.clone()],
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::Alliance(alliance_id), &alliance);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::NextAllianceId, &(alliance_id + 1));
+
+        env.events()
+            .publish((Symbol::new(&env, "alliance_created"), leader), (alliance_id, name));
+
+        alliance_id
+    }
+
+    /// Join an existing alliance. Idempotent: joining twice does not duplicate membership.
+    pub fn join_alliance(env: Env, player: Address, alliance_id: u32) {
+        player.require_auth();
+
+        let mut alliance: Alliance = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Alliance(alliance_id))
+            .expect("alliance not found");
+
+        if alliance.members.iter().any(|member| member == player) {
+            return;
+        }
+
+        alliance.members.push_back(player.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::Alliance(alliance_id), &alliance);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PlayerAlliance(player.clone()), &alliance_id);
+
+        env.events()
+            .publish((Symbol::new(&env, "alliance_joined"), player), alliance_id);
+    }
+
+    /// Leave the player's current alliance. Panics if the player is not in one.
+    /// The alliance record is preserved; if the leader leaves, the alliance simply
+    /// loses its leader (no automatic transfer or deletion).
+    pub fn leave_alliance(env: Env, player: Address) {
+        player.require_auth();
+
+        let alliance_id: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::PlayerAlliance(player.clone()))
+            .expect("player is not in an alliance");
+
+        let mut alliance: Alliance = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Alliance(alliance_id))
+            .expect("alliance not found");
+
+        if let Some(index) = alliance.members.first_index_of(&player) {
+            alliance.members.remove(index);
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::Alliance(alliance_id), &alliance);
+
+        env.storage().instance().remove(&DataKey::PlayerAlliance(player.clone()));
+
+        env.events()
+            .publish((Symbol::new(&env, "alliance_left"), player), alliance_id);
+    }
+
+    pub fn get_alliance(env: Env, alliance_id: u32) -> Alliance {
+        env.storage()
+            .persistent()
+            .get(&DataKey::Alliance(alliance_id))
+            .expect("alliance not found")
+    }
+
+    pub fn get_player_alliance(env: Env, player: Address) -> Option<u32> {
+        env.storage().instance().get(&DataKey::PlayerAlliance(player))
     }
 }
 
@@ -877,5 +995,115 @@ mod tests {
         // First and last system must exist.
         assert_eq!(client.get_system(&0).owner, None);
         assert_eq!(client.get_system(&(MAX_GRID_SIZE * MAX_GRID_SIZE - 1)).owner, None);
+    }
+
+    // ── alliances (#193, #194, #195, #196) ────────────────────────────────
+
+    #[test]
+    fn create_alliance_sets_leader_as_member() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let leader = Address::generate(&env);
+
+        let alliance_id = client.create_alliance(&leader, &String::from_str(&env, "The Guardians"));
+
+        // Capture events immediately, before any further contract calls clear the buffer.
+        let events = env.events().all();
+
+        assert_eq!(alliance_id, 0);
+        assert_eq!(client.get_player_alliance(&leader), Some(0));
+
+        let alliance = client.get_alliance(&0);
+        assert_eq!(alliance.id, 0);
+        assert_eq!(alliance.leader, leader);
+        assert_eq!(alliance.name, String::from_str(&env, "The Guardians"));
+        assert_eq!(alliance.members, vec![&env, leader.clone()]);
+
+        let (contract, topics, data) = events.last().unwrap();
+        assert_eq!(contract, client.address);
+        assert_eq!(
+            topics,
+            (Symbol::new(&env, "alliance_created"), leader.clone()).into_val(&env)
+        );
+        let (id, name): (u32, String) = data.into_val(&env);
+        assert_eq!((id, name), (0, String::from_str(&env, "The Guardians")));
+    }
+
+    #[test]
+    fn join_alliance_twice_does_not_duplicate_membership() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let leader = Address::generate(&env);
+        let player = Address::generate(&env);
+        client.create_alliance(&leader, &String::from_str(&env, "The Guardians"));
+
+        client.join_alliance(&player, &0);
+        client.join_alliance(&player, &0);
+
+        let alliance = client.get_alliance(&0);
+        let count = alliance.members.iter().filter(|m| *m == player).count();
+        assert_eq!(count, 1);
+        assert_eq!(client.get_player_alliance(&player), Some(0));
+    }
+
+    #[test]
+    #[should_panic(expected = "player is not in an alliance")]
+    fn leave_alliance_panics_when_not_in_alliance() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let stranger = Address::generate(&env);
+
+        client.leave_alliance(&stranger);
+    }
+
+    #[test]
+    fn leave_alliance_removes_player_membership() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let leader = Address::generate(&env);
+        let player = Address::generate(&env);
+        client.create_alliance(&leader, &String::from_str(&env, "The Guardians"));
+        client.join_alliance(&player, &0);
+
+        client.leave_alliance(&player);
+
+        assert_eq!(client.get_player_alliance(&player), None);
+        let alliance = client.get_alliance(&0);
+        assert_eq!(
+            alliance.members.iter().filter(|m| *m == player).count(),
+            0
+        );
+    }
+
+    #[test]
+    fn leader_leaving_does_not_orphan_alliance() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let leader = Address::generate(&env);
+        let player = Address::generate(&env);
+        client.create_alliance(&leader, &String::from_str(&env, "The Guardians"));
+        client.join_alliance(&player, &0);
+
+        client.leave_alliance(&leader);
+
+        // Capture events immediately, before any further contract calls clear the buffer.
+        let events = env.events().all();
+
+        // The alliance record persists; the leader simply is no longer a member.
+        assert_eq!(client.get_player_alliance(&leader), None);
+        let alliance = client.get_alliance(&0);
+        assert_eq!(alliance.id, 0);
+        assert_eq!(alliance.leader, leader);
+        assert_eq!(alliance.members.len(), 1);
+        assert_eq!(alliance.members, vec![&env, player.clone()]);
+
+        let (contract, topics, data) = events.last().unwrap();
+        assert_eq!(contract, client.address);
+        assert_eq!(
+            topics,
+            (Symbol::new(&env, "alliance_left"), leader.clone()).into_val(&env)
+        );
+        let left_id: u32 = data.into_val(&env);
+        assert_eq!(left_id, 0);
     }
 }
