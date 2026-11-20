@@ -1,6 +1,6 @@
 import { rpc, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { Pool } from 'pg';
-import { processEvent, ContractEvent } from './processor';
+import { processEvent, ContractEvent, EventBroadcaster } from './processor';
 
 // ── Decoding ──────────────────────────────────────────────────────────────────
 
@@ -48,10 +48,18 @@ export async function fetchContractEvents(
 
 // ── Persisting ────────────────────────────────────────────────────────────────
 
-/** Hands each decoded event to the processor, in order, so DB writes stay sequential */
-async function persistContractEvents(db: Pool, events: ContractEvent[]): Promise<void> {
+/**
+ * Hands each decoded event to the processor, in order, so DB writes stay sequential.
+ * An optional `broadcast` callback (#220) is forwarded so connected WebSocket clients
+ * receive a push message after each event is persisted.
+ */
+async function persistContractEvents(
+  db: Pool,
+  events: ContractEvent[],
+  broadcast?: EventBroadcaster
+): Promise<void> {
   for (const event of events) {
-    await processEvent(db, event);
+    await processEvent(db, event, broadcast);
   }
 }
 
@@ -60,17 +68,19 @@ async function persistContractEvents(db: Pool, events: ContractEvent[]): Promise
 /**
  * Runs one indexer poll cycle: fetch new events since `startLedger`, decode
  * them, persist them, and return the ledger to resume from on the next cycle.
+ * An optional `broadcast` callback pushes each persisted event to WebSocket clients.
  */
 export async function runIndexerPollCycle(
   server: rpc.Server,
   db: Pool,
   contractIds: string[],
-  startLedger: number
+  startLedger: number,
+  broadcast?: EventBroadcaster
 ): Promise<number> {
   const response = await fetchContractEvents(server, contractIds, startLedger);
   const events = decodeContractEvents(response.events);
 
-  await persistContractEvents(db, events);
+  await persistContractEvents(db, events, broadcast);
 
   return response.latestLedger + 1;
 }

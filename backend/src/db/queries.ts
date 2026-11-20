@@ -329,3 +329,38 @@ export async function fetchAllianceById(db: Pool, allianceId: number) {
 
   return { ...alliance.rows[0], members: members.rows };
 }
+
+// ── Notifications (#217) ──────────────────────────────────────────────────────
+
+export type NotificationType =
+  | 'battle_won'
+  | 'battle_lost'
+  | 'system_lost'
+  | 'alliance_joined'
+  | 'alliance_left';
+
+export async function createNotification(
+  db: Pool,
+  player: string,
+  type: NotificationType,
+  message: string,
+  payload: Record<string, unknown> | null = null
+) {
+  await db.query(
+    `INSERT INTO notifications (player, type, message, payload)
+     VALUES ($1, $2, $3, $4)`,
+    [player, type, message, payload ? JSON.stringify(payload) : null]
+  );
+}
+
+export async function fetchNotificationsByPlayer(db: Pool, address: string, limit = 50) {
+  const result = await db.query(
+    `SELECT id, player, type, message, payload, read, created_at
+     FROM notifications
+     WHERE player = $1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [address, limit]
+  );
+  return result.rows;
+}

@@ -5,6 +5,7 @@ import {
   fetchBattlesByPlayer,
   fetchAllianceByPlayer,
   fetchRecentlyActivePlayers,
+  fetchNotificationsByPlayer,
 } from '../../db/queries';
 import { parseStellarAddress, validateParam } from '../validators';
 
@@ -17,6 +18,7 @@ export function createPlayerRouter(db: Pool): Router {
   router.get('/:address', fetchPlayerProfile(db));
   router.get('/:address/battles', fetchPlayerBattleHistory(db));
   router.get('/:address/alliance', fetchPlayerAlliance(db));
+  router.get('/:address/notifications', fetchPlayerNotifications(db));
 
   return router;
 }
@@ -78,6 +80,19 @@ function fetchPlayerAlliance(db: Pool) {
       }
 
       res.json({ alliance });
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+/** Returns per-player notifications, newest first (#217) */
+function fetchPlayerNotifications(db: Pool) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const address = parseStellarAddress(req.params.address);
+      const notifications = await fetchNotificationsByPlayer(db, address);
+      res.json({ notifications });
     } catch (err) {
       next(err);
     }
