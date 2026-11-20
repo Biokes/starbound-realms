@@ -16,3 +16,6 @@ export type { Fleet, UnitType, UnitCost } from './fleet.js';
 
 export { BattleClient, didAttackerWin, getBattleLoser, wasBattleDecisive } from './battle.js';
 export type { BattleResult, BattleRecord } from './battle.js';
+
+export { TradeClient } from './trade.js';
+export type { TradeOffer, ResourceType as TradeResourceType } from './trade.js';

@@ -286,6 +286,81 @@ export async function removeAllianceMember(db: Pool, player: string) {
   );
 }
 
+// ── Trade Offers (#204) ───────────────────────────────────────────────────────
+
+export async function fetchOpenTradeOffers(db: Pool, limit = 20, offset = 0) {
+  const result = await db.query(
+    `SELECT * FROM trade_offers WHERE status = 'open' ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return result.rows;
+}
+
+export async function fetchTradeOfferById(db: Pool, offerId: number) {
+  const result = await db.query('SELECT * FROM trade_offers WHERE offer_id = $1', [offerId]);
+  return result.rows[0] ?? null;
+}
+
+export async function insertTradeOffer(
+  db: Pool,
+  maker: string,
+  offerResource: string,
+  offerAmount: bigint,
+  wantResource: string,
+  wantAmount: bigint,
+  ledgerSequence?: number
+) {
+  const result = await db.query(
+    `INSERT INTO trade_offers
+       (maker, offer_resource, offer_amount, want_resource, want_amount, ledger_sequence)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING *`,
+    [maker, offerResource, offerAmount.toString(), wantResource, wantAmount.toString(), ledgerSequence ?? null]
+  );
+  return result.rows[0];
+}
+
+export async function acceptTradeOffer(db: Pool, offerId: number, taker: string) {
+  const result = await db.query(
+    `UPDATE trade_offers
+     SET status = 'accepted', taker = $2, updated_at = NOW()
+     WHERE offer_id = $1 AND status = 'open'
+     RETURNING *`,
+    [offerId, taker]
+  );
+  return result.rows[0] ?? null;
+}
+
+// ── Galaxy Events (#207) ──────────────────────────────────────────────────────
+
+export async function saveGalaxyEvent(
+  db: Pool,
+  eventType: string,
+  systemId: number,
+  magnitude: number,
+  ledgerSequence: number,
+  affectedPlayer?: string
+) {
+  const result = await db.query(
+    `INSERT INTO galaxy_events
+       (event_type, system_id, magnitude, ledger_sequence, affected_player)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [eventType, systemId, magnitude, ledgerSequence, affectedPlayer ?? null]
+  );
+  return result.rows[0];
+}
+
+export async function fetchRecentGalaxyEvents(db: Pool, limit = 20, offset = 0) {
+  const result = await db.query(
+    `SELECT * FROM galaxy_events ORDER BY ledger_sequence DESC, id DESC LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+  return result.rows;
+}
+
+// ── Alliance helpers ──────────────────────────────────────────────────────────
+
 /** The alliance a player currently belongs to, with its member list, or null. */
 export async function fetchAllianceByPlayer(db: Pool, address: string) {
   const membership = await db.query(
