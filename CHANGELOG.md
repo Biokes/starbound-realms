@@ -9,6 +9,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **SECURITY.md** — private vulnerability reporting path (GitHub security advisory) and a testnet-only scope statement (#109)
+- **Stellar/Soroban glossary** — `docs/glossary.md` defines every chain-specific term used across the docs, each linked to official Stellar docs (#110)
+- **Pull request template** — `.github/PULL_REQUEST_TEMPLATE.md` prompts for the linked issue, tests, TDD, and mutation testing (#111)
+- **Admin-mint regression test** — `admin_mint_still_works_after_sac_admin_handoff` connects the SAC admin handoff to the admin-only `mint` path in one test (#137)
 - **Recently active players widget** — landing page lists the most recently active players, backed by a new `GET /player/recent` route (#311)
 - **Full-stack backend integration test** — mock Soroban RPC → real indexer/processor → dockerized Postgres → API routes, run via `pnpm test` (#309)
 - **`getNetworkInfo` example** — SDK README section and runnable `sdk/examples/network-info.ts` (#310)
@@ -19,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `startIndexer` accepts `allowHttp` for local/test RPC endpoints (#309)
 
 ### Fixed
+- **resources contract builds and lints again** — `upgrade_system` passed `&Env` to `balance`, the test `StarSystem` mock was missing `upgrade_level`, and `burn_plasma` had two `needless_borrow` clippy errors; all were blocking `cargo test` for the package (#137)
 - Fleet contract test mock `StarSystem` was missing `upgrade_level`, so the fleet tests did not compile (#308)
 
 ---

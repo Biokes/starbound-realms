@@ -270,7 +270,7 @@ impl ResourcesContract {
         verify_player_owns_system(&system, &player);
 
         let cost = 100i128 * (system.upgrade_level + 1) as i128;
-        let balance = Self::balance(&env, player.clone(), ResourceType::Plasma);
+        let balance = Self::balance(env.clone(), player.clone(), ResourceType::Plasma);
 
         if balance < cost {
             panic!("insufficient plasma balance");
@@ -332,8 +332,8 @@ impl ResourcesContract {
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     fn burn_plasma(env: &Env, player: &Address, amount: i128) {
-        let token_addr = Self::token_addr(&env, &ResourceType::Plasma);
-        let client = token::TokenClient::new(&env, &token_addr);
+        let token_addr = Self::token_addr(env, &ResourceType::Plasma);
+        let client = token::TokenClient::new(env, &token_addr);
         client.burn(player, &amount);
     }
 
@@ -601,6 +601,7 @@ mod tests {
                 resource_yield,
                 defense_rating: 5,
                 last_claimed,
+                upgrade_level: 0,
             };
             env.storage().instance().set(&symbol_short!("system"), &system);
         }
@@ -891,5 +892,42 @@ mod tests {
 
         // Timestamp has not advanced past another full period, so this must panic.
         fx.client.mine(&player, &3);
+    }
+
+    // ── admin mint after SAC admin handoff (#137) ─────────────────────────────
+
+    /// Issue #137: #16 handed SAC admin for IRON/NRGY/PLSM to this contract so
+    /// players can mine. The contract's own admin-only `mint` relies on the
+    /// same property — this contract must be able to act as the SAC admin for
+    /// its internal `SAC.mint` sub-invocation. This test performs that handoff
+    /// (as `setup_mining` does for the `mine` tests) and then confirms `mint`
+    /// still succeeds.
+    ///
+    /// Only the app-level admin authorization is mocked: the SAC-side
+    /// authorization must succeed on its own because this contract is the
+    /// asset admin. If a future change breaks either half of the interaction,
+    /// this test fails with an auth error (or a zero balance) without needing
+    /// a live testnet check.
+    #[test]
+    fn admin_mint_still_works_after_sac_admin_handoff() {
+        let env = Env::default();
+        let fx = setup_mining(&env);
+        let player = Address::generate(&env);
+
+        // mock_auths replaces the mock_all_auths from setup: only the stored
+        // app admin's signature is provided for the top-level `mint` call.
+        env.mock_auths(&[MockAuth {
+            address: &fx.admin,
+            invoke: &MockAuthInvoke {
+                contract: &fx.client.address,
+                fn_name: "mint",
+                args: (player.clone(), ResourceType::Iron, 100i128).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+
+        fx.client.mint(&player, &ResourceType::Iron, &100);
+
+        assert_eq!(fx.client.balance(&player, &ResourceType::Iron), 100);
     }
 }
