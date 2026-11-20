@@ -18,6 +18,7 @@ pub enum DataKey {
     /// Active pact between two players (always stored with the lower address first
     /// so the key is the same regardless of which side you query from).
     Pact(Address, Address),
+    Paused,
 }
 
 // ── Types ────────────────────────────────────────────────────────────[...]
@@ -171,6 +172,7 @@ impl BattleContract {
     /// * `attacker.require_auth()` must succeed.
     pub fn resolve_battle(env: Env, attacker: Address, defender: Address, system_id: u32) -> u64 {
         attacker.require_auth();
+        require_not_paused(&env);
 
         if has_active_pact(&env, &attacker, &defender) {
             panic!("cannot attack a player you have an active pact with");
@@ -232,6 +234,7 @@ impl BattleContract {
     /// * Panics if `proposer` tries to propose a pact with themselves.
     pub fn propose_pact(env: Env, proposer: Address, addressee: Address) {
         proposer.require_auth();
+        require_not_paused(&env);
 
         if proposer == addressee {
             panic!("cannot propose a pact with yourself");
@@ -269,6 +272,7 @@ impl BattleContract {
     /// * Panics if an active pact already exists between the two players.
     pub fn accept_pact(env: Env, acceptor: Address, proposer: Address) {
         acceptor.require_auth();
+        require_not_paused(&env);
 
         let proposal_key = DataKey::PactProposal(proposer.clone(), acceptor.clone());
         if !env.storage().persistent().has(&proposal_key) {
@@ -317,6 +321,49 @@ impl BattleContract {
             return PactStatus::Proposed;
         }
         PactStatus::None
+    }
+
+    // ── Pause ─────────────────────────────────────────────────────────────────
+
+    /// Halts all state-mutating functions. Admin only.
+    /// Panics if the contract is already paused.
+    pub fn pause(env: Env, caller: Address) {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        if caller != admin {
+            panic!("caller is not the admin");
+        }
+        if is_paused(&env) {
+            panic!("already paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &true);
+    }
+
+    /// Re-enables state-mutating functions after a pause. Admin only.
+    /// Panics if the contract is not currently paused.
+    pub fn unpause(env: Env, caller: Address) {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
+        if caller != admin {
+            panic!("caller is not the admin");
+        }
+        if !is_paused(&env) {
+            panic!("not paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &false);
+    }
+
+    /// Returns `true` if the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        is_paused(&env)
     }
 }
 
@@ -400,6 +447,19 @@ fn has_active_pact(env: &Env, a: &Address, b: &Address) -> bool {
 fn set_active_pact(env: &Env, a: &Address, b: &Address) {
     env.storage().persistent().set(&DataKey::Pact(a.clone(), b.clone()), &true);
     env.storage().persistent().set(&DataKey::Pact(b.clone(), a.clone()), &true);
+}
+
+fn is_paused(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::Paused)
+        .unwrap_or(false)
+}
+
+fn require_not_paused(env: &Env) {
+    if is_paused(env) {
+        panic!("contract is paused");
+    }
 }
 
 // ── Combat math ───────────────────────────────────────────────────────────[...]
@@ -1079,5 +1139,88 @@ mod tests {
         let battle_id = fx.client.resolve_battle(&attacker, &defender, &1);
 
         assert_eq!(fx.client.get_battle(&battle_id).winner, attacker);
+    }
+
+    // ── pause / unpause ───────────────────────────────────────────────────────
+
+    #[test]
+    fn contract_is_not_paused_after_initialization() {
+        let env = Env::default();
+        let (client, _) = setup_battle(&env);
+
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_pause_the_contract() {
+        let env = Env::default();
+        let (client, admin) = setup_battle(&env);
+
+        client.pause(&admin);
+
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_unpause_a_paused_contract() {
+        let env = Env::default();
+        let (client, admin) = setup_battle(&env);
+        client.pause(&admin);
+
+        client.unpause(&admin);
+
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "already paused")]
+    fn pause_panics_when_already_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_battle(&env);
+        client.pause(&admin);
+
+        client.pause(&admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "not paused")]
+    fn unpause_panics_when_not_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_battle(&env);
+
+        client.unpause(&admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "caller is not the admin")]
+    fn pause_panics_for_non_admin_caller() {
+        let env = Env::default();
+        let (client, _) = setup_battle(&env);
+        let stranger = Address::generate(&env);
+
+        client.pause(&stranger);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn resolve_battle_is_blocked_while_paused() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let galaxy_id = env.register(MockGalaxy, ());
+        let fleet_id = env.register(MockFleet, ());
+        let contract_id = env.register(BattleContract, ());
+        let client = BattleContractClient::new(&env, &contract_id);
+        env.mock_all_auths();
+        client.initialize(&admin, &galaxy_id, &fleet_id);
+        let galaxy = MockGalaxyClient::new(&env, &galaxy_id);
+        let fleet_client = MockFleetClient::new(&env, &fleet_id);
+        let attacker = Address::generate(&env);
+        let defender = Address::generate(&env);
+        galaxy.seed_system(&defender, &5);
+        fleet_client.seed_fleet(&attacker, &fleet_of(0, 0, 0, 50));
+        fleet_client.seed_fleet(&defender, &fleet_of(1, 0, 0, 0));
+
+        client.pause(&admin);
+        client.resolve_battle(&attacker, &defender, &1);
     }
 }

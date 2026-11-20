@@ -14,6 +14,7 @@ pub enum DataKey {
     Fleet(Address),
     Deployed(Address),
     Initialized,
+    Paused,
 }
 
 // ── Types ────────────────────────────────────────────────────────────[...]
@@ -163,6 +164,7 @@ impl FleetContract {
     ///   resources and receiving the new fleet units.
     pub fn build_unit(env: Env, player: Address, unit_type: UnitType, count: u32) {
         player.require_auth();
+        require_not_paused(&env);
         verify_count_is_positive(count);
 
         burn_build_cost(&env, &player, &total_build_cost(&unit_type, count));
@@ -195,6 +197,7 @@ impl FleetContract {
     /// * `player.require_auth()` must succeed.
     pub fn deploy_fleet(env: Env, player: Address, system_id: u32) {
         player.require_auth();
+        require_not_paused(&env);
         verify_fleet_is_not_deployed(&env, &player);
 
         let system = fetch_system(&env, system_id);
@@ -233,6 +236,7 @@ impl FleetContract {
     /// * `player.require_auth()` must succeed.
     pub fn move_fleet(env: Env, player: Address, target_system_id: u32) {
         player.require_auth();
+        require_not_paused(&env);
 
         let mut fleet = get_stored_fleet(&env, &player);
         verify_fleet_is_not_empty(&fleet);
@@ -299,6 +303,7 @@ impl FleetContract {
     /// * `caller` must match the address set via `set_battle_contract`.
     pub fn apply_battle_losses(env: Env, caller: Address, player: Address, losses: Fleet) {
         caller.require_auth();
+        require_not_paused(&env);
         verify_caller_is_battle_contract(&env, &caller);
 
         let mut fleet = get_stored_fleet(&env, &player);
@@ -379,6 +384,35 @@ impl FleetContract {
             .persistent()
             .remove(&DataKey::Deployed(player));
     }
+
+    // ── Pause ─────────────────────────────────────────────────────────────────
+
+    /// Halts all state-mutating functions. Admin only.
+    /// Panics if the contract is already paused.
+    pub fn pause(env: Env, caller: Address) {
+        caller.require_auth();
+        verify_caller_is_admin(&env, &caller);
+        if is_paused(&env) {
+            panic!("already paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &true);
+    }
+
+    /// Re-enables state-mutating functions after a pause. Admin only.
+    /// Panics if the contract is not currently paused.
+    pub fn unpause(env: Env, caller: Address) {
+        caller.require_auth();
+        verify_caller_is_admin(&env, &caller);
+        if !is_paused(&env) {
+            panic!("not paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &false);
+    }
+
+    /// Returns `true` if the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        is_paused(&env)
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────[...]
@@ -401,6 +435,19 @@ fn verify_caller_is_admin(env: &Env, caller: &Address) {
         .expect("not initialized");
     if *caller != admin {
         panic!("caller is not the admin");
+    }
+}
+
+fn is_paused(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::Paused)
+        .unwrap_or(false)
+}
+
+fn require_not_paused(env: &Env) {
+    if is_paused(env) {
+        panic!("contract is paused");
     }
 }
 
@@ -1501,5 +1548,87 @@ mod tests {
         let player = Address::generate(&env);
 
         impostor_client.trigger_losses(&fx.client.address, &player, &losses(1));
+    }
+
+    // ── pause / unpause ───────────────────────────────────────────────────────
+
+    #[test]
+    fn contract_is_not_paused_after_initialization() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+
+        assert!(!fx.client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_pause_the_contract() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+
+        fx.client.pause(&fx.admin);
+
+        assert!(fx.client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_unpause_a_paused_contract() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        fx.client.pause(&fx.admin);
+
+        fx.client.unpause(&fx.admin);
+
+        assert!(!fx.client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "already paused")]
+    fn pause_panics_when_already_paused() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        fx.client.pause(&fx.admin);
+
+        fx.client.pause(&fx.admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "not paused")]
+    fn unpause_panics_when_not_paused() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+
+        fx.client.unpause(&fx.admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "caller is not the admin")]
+    fn pause_panics_for_non_admin_caller() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let stranger = Address::generate(&env);
+
+        fx.client.pause(&stranger);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn build_unit_panics_when_contract_is_paused() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = Address::generate(&env);
+        fx.client.pause(&fx.admin);
+
+        fx.client.build_unit(&player, &UnitType::Scout, &1);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn move_fleet_panics_when_contract_is_paused() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout(&env, &fx);
+        fx.client.pause(&fx.admin);
+
+        fx.client.move_fleet(&player, &1);
     }
 }

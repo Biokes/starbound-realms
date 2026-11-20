@@ -20,6 +20,7 @@ pub enum DataKey {
     NextTradeOfferId,
     OpenTradeOffers,
     TradeOffer(u64),
+    Paused,
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -163,6 +164,7 @@ impl ResourcesContract {
             .expect("not initialized");
 
         admin.require_auth();
+        require_not_paused(&env);
 
         let token_addr = Self::token_addr(&env, &resource);
         let client = token::StellarAssetClient::new(&env, &token_addr);
@@ -191,6 +193,7 @@ impl ResourcesContract {
     /// - Panics with `"caller is not the admin"` if `caller` does not match the stored `admin` address.
     pub fn set_galaxy_map(env: Env, caller: Address, galaxy_map: Address) {
         caller.require_auth();
+        require_not_paused(&env);
         verify_caller_is_admin(&env, &caller);
         env.storage().instance().set(&DataKey::GalaxyMap, &galaxy_map);
     }
@@ -226,6 +229,7 @@ impl ResourcesContract {
     ///   or if `player` has not established a trustline for the system's resource asset.
     pub fn mine(env: Env, player: Address, system_id: u32) -> i128 {
         player.require_auth();
+        require_not_paused(&env);
 
         let system = fetch_galaxy_map_client(&env).get_system(&system_id);
         verify_player_owns_system(&system, &player);
@@ -277,6 +281,7 @@ impl ResourcesContract {
     ///   if `amount < 0`, or if `from` lacks a trustline for `resource`.
     pub fn burn(env: Env, from: Address, resource: ResourceType, amount: i128) {
         from.require_auth();
+        require_not_paused(&env);
 
         let token_addr = Self::token_addr(&env, &resource);
         let client = token::TokenClient::new(&env, &token_addr);
@@ -291,6 +296,7 @@ impl ResourcesContract {
     /// Requires the player to own the system and have sufficient Plasma balance.
     pub fn upgrade_system(env: Env, player: Address, system_id: u32) {
         player.require_auth();
+        require_not_paused(&env);
 
         let galaxy_map = fetch_galaxy_map_client(&env);
         let system = galaxy_map.get_system(&system_id);
@@ -343,6 +349,7 @@ impl ResourcesContract {
         expires_at: u64,
     ) -> u64 {
         maker.require_auth();
+        require_not_paused(&env);
         if offer_amount <= 0 || want_amount <= 0 {
             panic!("trade amounts must be positive");
         }
@@ -398,6 +405,7 @@ impl ResourcesContract {
 
     pub fn accept_trade_offer(env: Env, taker: Address, offer_id: u64) {
         taker.require_auth();
+        require_not_paused(&env);
         let mut offer: TradeOffer = env
             .storage()
             .persistent()
@@ -439,6 +447,7 @@ impl ResourcesContract {
 
     pub fn cancel_trade_offer(env: Env, maker: Address, offer_id: u64) {
         maker.require_auth();
+        require_not_paused(&env);
         let mut offer: TradeOffer = env
             .storage()
             .persistent()
@@ -509,6 +518,7 @@ impl ResourcesContract {
     pub fn reset_season(env: Env, caller: Address) {
         caller.require_auth();
         verify_caller_is_admin(&env, &caller);
+        require_not_paused(&env);
 
         let grid_size = fetch_galaxy_map_client(&env).get_grid_size();
         let total = grid_size * grid_size;
@@ -518,6 +528,35 @@ impl ResourcesContract {
             env.storage().persistent().set(&DataKey::LastMined(id), &now);
             id += 1;
         }
+    }
+
+    // ── Pause ─────────────────────────────────────────────────────────────────
+
+    /// Halts all state-mutating functions. Admin only.
+    /// Panics if the contract is already paused.
+    pub fn pause(env: Env, caller: Address) {
+        caller.require_auth();
+        verify_caller_is_admin(&env, &caller);
+        if is_paused(&env) {
+            panic!("already paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &true);
+    }
+
+    /// Re-enables state-mutating functions after a pause. Admin only.
+    /// Panics if the contract is not currently paused.
+    pub fn unpause(env: Env, caller: Address) {
+        caller.require_auth();
+        verify_caller_is_admin(&env, &caller);
+        if !is_paused(&env) {
+            panic!("not paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &false);
+    }
+
+    /// Returns `true` if the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        is_paused(&env)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -582,6 +621,19 @@ fn verify_caller_is_admin(env: &Env, caller: &Address) {
         .expect("not initialized");
     if *caller != admin {
         panic!("caller is not the admin");
+    }
+}
+
+fn is_paused(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::Paused)
+        .unwrap_or(false)
+}
+
+fn require_not_paused(env: &Env) {
+    if is_paused(env) {
+        panic!("contract is paused");
     }
 }
 
@@ -1106,6 +1158,89 @@ mod tests {
 
         // Timestamp has not advanced past another full period, so this must panic.
         fx.client.mine(&player, &3);
+    }
+
+    // ── pause / unpause ───────────────────────────────────────────────────────
+
+    #[test]
+    fn contract_is_not_paused_after_initialization() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+
+        assert!(!fx.client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_pause_the_contract() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+
+        fx.client.pause(&fx.admin);
+
+        assert!(fx.client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_unpause_a_paused_contract() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+        fx.client.pause(&fx.admin);
+
+        fx.client.unpause(&fx.admin);
+
+        assert!(!fx.client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "already paused")]
+    fn pause_panics_when_already_paused() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+        fx.client.pause(&fx.admin);
+
+        fx.client.pause(&fx.admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "not paused")]
+    fn unpause_panics_when_not_paused() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+
+        fx.client.unpause(&fx.admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "caller is not the admin")]
+    fn pause_panics_for_non_admin_caller() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+        let stranger = Address::generate(&env);
+
+        fx.client.pause(&stranger);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn mint_panics_when_contract_is_paused() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+        let player = Address::generate(&env);
+        fx.client.pause(&fx.admin);
+
+        fx.client.mint(&player, &ResourceType::Iron, &10);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn burn_panics_when_contract_is_paused() {
+        let env = Env::default();
+        let fx = setup_resources(&env);
+        let player = Address::generate(&env);
+        fx.client.mint(&player, &ResourceType::Iron, &10);
+        fx.client.pause(&fx.admin);
+
+        fx.client.burn(&player, &ResourceType::Iron, &5);
     }
 
     // ── admin mint after SAC admin handoff (#137) ─────────────────────────────

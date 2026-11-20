@@ -19,6 +19,7 @@ pub enum DataKey {
     Alliance(u32),
     PlayerAlliance(Address),
     NextAllianceId,
+    Paused,
 }
 
 // ── Event Types ───────────────────────────────────────────────────────────────
@@ -148,6 +149,7 @@ impl GalaxyMapContract {
     /// Claim an unclaimed star system.
     pub fn claim_system(env: Env, player: Address, system_id: u32) {
         player.require_auth();
+        require_not_paused(&env);
 
         let mut system: StarSystem = env
             .storage()
@@ -175,6 +177,7 @@ impl GalaxyMapContract {
     /// Transfer a system you own to another player.
     pub fn transfer_ownership(env: Env, caller: Address, system_id: u32, new_owner: Address) {
         caller.require_auth();
+        require_not_paused(&env);
 
         let mut system: StarSystem = env
             .storage()
@@ -202,6 +205,7 @@ impl GalaxyMapContract {
     /// Upgrade a system's defense by one level, costing 100 * (level + 1) Plasma.
     pub fn upgrade_system(env: Env, player: Address, system_id: u32) {
         player.require_auth();
+        require_not_paused(&env);
 
         let mut system: StarSystem = env
             .storage()
@@ -239,6 +243,7 @@ impl GalaxyMapContract {
     pub fn transfer_ownership_after_battle(env: Env, caller: Address, system_id: u32, new_owner: Address) {
         caller.require_auth();
         verify_caller_is_battle_contract(&env, &caller);
+        require_not_paused(&env);
 
         let mut system: StarSystem = env
             .storage()
@@ -403,6 +408,7 @@ impl GalaxyMapContract {
     /// Returns the new alliance id.
     pub fn create_alliance(env: Env, leader: Address, name: String) -> u32 {
         leader.require_auth();
+        require_not_paused(&env);
 
         let next_id: u32 = env
             .storage()
@@ -438,6 +444,7 @@ impl GalaxyMapContract {
     /// Join an existing alliance. Idempotent: joining twice does not duplicate membership.
     pub fn join_alliance(env: Env, player: Address, alliance_id: u32) {
         player.require_auth();
+        require_not_paused(&env);
 
         let mut alliance: Alliance = env
             .storage()
@@ -467,6 +474,7 @@ impl GalaxyMapContract {
     /// loses its leader (no automatic transfer or deletion).
     pub fn leave_alliance(env: Env, player: Address) {
         player.require_auth();
+        require_not_paused(&env);
 
         let alliance_id: u32 = env
             .storage()
@@ -504,6 +512,35 @@ impl GalaxyMapContract {
     pub fn get_player_alliance(env: Env, player: Address) -> Option<u32> {
         env.storage().instance().get(&DataKey::PlayerAlliance(player))
     }
+
+    // ── Pause ─────────────────────────────────────────────────────────────────
+
+    /// Halts all state-mutating functions. Admin only.
+    /// Panics if the contract is already paused.
+    pub fn pause(env: Env, caller: Address) {
+        caller.require_auth();
+        verify_caller_is_admin(&env, &caller);
+        if is_paused(&env) {
+            panic!("already paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &true);
+    }
+
+    /// Re-enables state-mutating functions after a pause. Admin only.
+    /// Panics if the contract is not currently paused.
+    pub fn unpause(env: Env, caller: Address) {
+        caller.require_auth();
+        verify_caller_is_admin(&env, &caller);
+        if !is_paused(&env) {
+            panic!("not paused");
+        }
+        env.storage().instance().set(&DataKey::Paused, &false);
+    }
+
+    /// Returns `true` if the contract is currently paused.
+    pub fn is_paused(env: Env) -> bool {
+        is_paused(&env)
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -517,6 +554,19 @@ fn verify_caller_is_admin(env: &Env, caller: &Address) {
         .expect("not initialized");
     if *caller != admin {
         panic!("caller is not the admin");
+    }
+}
+
+fn is_paused(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::Paused)
+        .unwrap_or(false)
+}
+
+fn require_not_paused(env: &Env) {
+    if is_paused(env) {
+        panic!("contract is paused");
     }
 }
 
@@ -1105,5 +1155,89 @@ mod tests {
         );
         let left_id: u32 = data.into_val(&env);
         assert_eq!(left_id, 0);
+    }
+
+    // ── pause / unpause ───────────────────────────────────────────────────────
+
+    #[test]
+    fn contract_is_not_paused_after_initialization() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_pause_the_contract() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+
+        client.pause(&admin);
+
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    fn admin_can_unpause_a_paused_contract() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+        client.pause(&admin);
+
+        client.unpause(&admin);
+
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "already paused")]
+    fn pause_panics_when_already_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+        client.pause(&admin);
+
+        client.pause(&admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "not paused")]
+    fn unpause_panics_when_not_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+
+        client.unpause(&admin);
+    }
+
+    #[test]
+    #[should_panic(expected = "caller is not the admin")]
+    fn pause_panics_for_non_admin_caller() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let stranger = Address::generate(&env);
+
+        client.pause(&stranger);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn claim_system_panics_when_contract_is_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+        client.pause(&admin);
+
+        client.claim_system(&player, &0);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn transfer_ownership_panics_when_contract_is_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        let new_owner = Address::generate(&env);
+        client.claim_system(&owner, &0);
+        client.pause(&admin);
+
+        client.transfer_ownership(&owner, &0, &new_owner);
     }
 }
