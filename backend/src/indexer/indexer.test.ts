@@ -15,6 +15,7 @@ vi.mock('../db/queries', () => ({
 }));
 
 import { createPersistingPollCycle, startIndexer } from './indexer';
+import { rpc } from '@stellar/stellar-sdk';
 import { runIndexerPollCycle, startEventListener } from './eventListener';
 import { fetchIndexerCursor, saveIndexerCursor } from '../db/queries';
 
@@ -75,5 +76,15 @@ describe('startIndexer', () => {
 
     expect(runIndexerPollCycle).toHaveBeenCalledWith(expect.anything(), db, contractIds, 1);
     expect(saveIndexerCursor).toHaveBeenCalledWith(db, 50);
+  });
+
+  it('passes allowHttp through to the RPC client, off by default', async () => {
+    vi.mocked(fetchIndexerCursor).mockResolvedValue(1);
+
+    await startIndexer({ db, rpcUrl: 'https://rpc', contractIds, pollIntervalMs: 1000 });
+    await startIndexer({ db, rpcUrl: 'http://localhost:8000', contractIds, pollIntervalMs: 1000, allowHttp: true });
+
+    expect(rpc.Server).toHaveBeenNthCalledWith(1, 'https://rpc', { allowHttp: false });
+    expect(rpc.Server).toHaveBeenNthCalledWith(2, 'http://localhost:8000', { allowHttp: true });
   });
 });

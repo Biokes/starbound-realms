@@ -4,6 +4,7 @@ import {
   fetchPlayerByAddress,
   fetchBattlesByPlayer,
   fetchAllianceByPlayer,
+  fetchRecentlyActivePlayers,
 } from '../../db/queries';
 import { parseStellarAddress, validateParam } from '../validators';
 
@@ -11,11 +12,25 @@ export function createPlayerRouter(db: Pool): Router {
   const router = Router();
 
   router.param('address', validateParam(parseStellarAddress));
+  // Registered before `/:address` so "recent" is never parsed as an address.
+  router.get('/recent', fetchRecentPlayers(db));
   router.get('/:address', fetchPlayerProfile(db));
   router.get('/:address/battles', fetchPlayerBattleHistory(db));
   router.get('/:address/alliance', fetchPlayerAlliance(db));
 
   return router;
+}
+
+/** Returns the most recently active players, newest first (#311) */
+function fetchRecentPlayers(db: Pool) {
+  return async (_req: Request, res: Response, next: NextFunction) => {
+    try {
+      const players = await fetchRecentlyActivePlayers(db);
+      res.json({ players });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 /** Returns a player's profile — systems owned, battle stats */

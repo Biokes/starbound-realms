@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useStellar } from './hooks/useStellar';
 import { useLeaderboard } from './hooks/useLeaderboard';
+import { useRecentlyActivePlayers } from './hooks/useRecentlyActivePlayers';
 import { NetworkBadge } from './components/NetworkBadge';
 import { ThemeToggle } from './components/ThemeToggle';
 import { GameView } from './components/GameView';
 import { Leaderboard } from './components/Leaderboard';
+import { RecentlyActivePlayers } from './components/RecentlyActivePlayers';
 import { NotificationProvider, useNotification } from './components/Notifications';
 import { OnboardingModal } from './components/OnboardingModal';
 import { truncateAddress } from './lib/format';
@@ -400,6 +402,9 @@ function AppContent() {
         </div>
       </section>
 
+      {/* Recently active players (#311) — shows a new visitor the galaxy is alive */}
+      <RecentlyActivePlayersSection />
+
       {/* Leaderboard — fetched only while open, to stay under the route's rate limit */}
       {showLeaderboard && <LeaderboardSection />}
 
@@ -463,6 +468,21 @@ function LeaderboardSection() {
     <section style={styles.leaderboardSection}>
       <h2 style={styles.leaderboardTitle}>Leaderboard</h2>
       <Leaderboard players={players} isLoading={isLoading} error={error} />
+    </section>
+  );
+}
+
+// ── Recently active players ───────────────────────────────────────────────────
+
+function RecentlyActivePlayersSection() {
+  const { players, isLoading, error } = useRecentlyActivePlayers(BACKEND_URL);
+
+  return (
+    <section style={styles.leaderboardSection} aria-labelledby="recently-active-title">
+      <h2 id="recently-active-title" style={styles.leaderboardTitle}>
+        Recently active
+      </h2>
+      <RecentlyActivePlayers players={players} isLoading={isLoading} error={error} />
     </section>
   );
 }

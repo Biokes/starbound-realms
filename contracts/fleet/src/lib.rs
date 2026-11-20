@@ -650,6 +650,7 @@ mod tests {
                 resource_yield: 0,
                 defense_rating: 0,
                 last_claimed: 0,
+                upgrade_level: 0,
             }
         }
     }
@@ -1120,6 +1121,206 @@ mod tests {
         fx.client.move_fleet(&player, &1);
 
         assert_eq!(fx.client.get_fleet(&player).scouts, 1);
+    }
+
+    // ── move_fleet at grid boundaries ─────────────────────────────────────
+    //
+    // The mock galaxy is a 4x4 grid, so (0,0) is system 0 and the maximum
+    // coordinate (3,3) is system 15. Corner systems only have two neighbours
+    // and the grid does not wrap around its edges.
+
+    const ORIGIN: u32 = 0;
+    const MAX_CORNER: u32 = 15;
+
+    /// Builds a single-scout fleet for a new player, deploys it at `system_id`
+    /// and advances the clock past the first move's cooldown.
+    fn fleet_with_one_scout_at(env: &Env, fx: &Fixture<'_>, system_id: u32) -> Address {
+        let player = Address::generate(env);
+        fx.client.build_unit(&player, &UnitType::Scout, &1);
+        fx.galaxy.seed_system(&system_id, &player);
+        fx.client.deploy_fleet(&player, &system_id);
+        env.ledger().set_timestamp(1_000);
+        player
+    }
+
+    /// Returns every system on the grid adjacent to `system_id`, in id order.
+    fn neighbours(env: &Env, grid_size: u32, system_id: u32) -> Vec<u32> {
+        let mut found = Vec::new(env);
+        for other in 0..grid_size * grid_size {
+            if are_systems_adjacent(grid_size, system_id, other) {
+                found.push_back(other);
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn origin_corner_has_only_east_and_south_neighbours() {
+        let env = Env::default();
+        assert_eq!(neighbours(&env, 4, ORIGIN), soroban_sdk::vec![&env, 1, 4]);
+    }
+
+    #[test]
+    fn max_corner_has_only_west_and_north_neighbours() {
+        let env = Env::default();
+        assert_eq!(neighbours(&env, 4, MAX_CORNER), soroban_sdk::vec![&env, 11, 14]);
+    }
+
+    #[test]
+    fn every_corner_has_two_neighbours_edges_three_and_interior_four() {
+        let env = Env::default();
+        for system_id in 0..16 {
+            let (x, y) = (system_id % 4, system_id / 4);
+            let on_x_edge = x == 0 || x == 3;
+            let on_y_edge = y == 0 || y == 3;
+            let expected = 4 - on_x_edge as u32 - on_y_edge as u32;
+            assert_eq!(
+                neighbours(&env, 4, system_id).len(),
+                expected,
+                "system {} at ({},{})",
+                system_id,
+                x,
+                y
+            );
+        }
+    }
+
+    #[test]
+    fn move_fleet_from_origin_to_each_neighbour_succeeds() {
+        for target in [1, 4] {
+            let env = Env::default();
+            let fx = setup_fleet(&env);
+            let player = fleet_with_one_scout_at(&env, &fx, ORIGIN);
+
+            fx.client.move_fleet(&player, &target);
+
+            assert_eq!(fx.client.get_fleet(&player).location, target);
+        }
+    }
+
+    #[test]
+    fn move_fleet_into_origin_from_each_neighbour_succeeds() {
+        for start in [1, 4] {
+            let env = Env::default();
+            let fx = setup_fleet(&env);
+            let player = fleet_with_one_scout_at(&env, &fx, start);
+
+            fx.client.move_fleet(&player, &ORIGIN);
+
+            assert_eq!(fx.client.get_fleet(&player).location, ORIGIN);
+        }
+    }
+
+    #[test]
+    fn move_fleet_from_max_corner_to_each_neighbour_succeeds() {
+        for target in [11, 14] {
+            let env = Env::default();
+            let fx = setup_fleet(&env);
+            let player = fleet_with_one_scout_at(&env, &fx, MAX_CORNER);
+
+            fx.client.move_fleet(&player, &target);
+
+            assert_eq!(fx.client.get_fleet(&player).location, target);
+        }
+    }
+
+    #[test]
+    fn move_fleet_into_max_corner_from_each_neighbour_succeeds() {
+        for start in [11, 14] {
+            let env = Env::default();
+            let fx = setup_fleet(&env);
+            let player = fleet_with_one_scout_at(&env, &fx, start);
+
+            fx.client.move_fleet(&player, &MAX_CORNER);
+
+            assert_eq!(fx.client.get_fleet(&player).location, MAX_CORNER);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is not adjacent")]
+    fn move_fleet_from_origin_does_not_wrap_west_to_end_of_row() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, ORIGIN);
+
+        // (0,0) -> (3,0)
+        fx.client.move_fleet(&player, &3);
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is not adjacent")]
+    fn move_fleet_from_origin_does_not_wrap_north_to_last_row() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, ORIGIN);
+
+        // (0,0) -> (0,3)
+        fx.client.move_fleet(&player, &12);
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is not adjacent")]
+    fn move_fleet_from_origin_does_not_wrap_to_max_corner() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, ORIGIN);
+
+        fx.client.move_fleet(&player, &MAX_CORNER);
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is not adjacent")]
+    fn move_fleet_from_max_corner_does_not_wrap_east_to_start_of_row() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, MAX_CORNER);
+
+        // (3,3) -> (0,3)
+        fx.client.move_fleet(&player, &12);
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is not adjacent")]
+    fn move_fleet_from_max_corner_does_not_wrap_south_to_first_row() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, MAX_CORNER);
+
+        // (3,3) -> (3,0)
+        fx.client.move_fleet(&player, &3);
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is not adjacent")]
+    fn move_fleet_from_max_corner_does_not_wrap_to_origin() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, MAX_CORNER);
+
+        fx.client.move_fleet(&player, &ORIGIN);
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is outside the galaxy")]
+    fn move_fleet_from_max_corner_cannot_step_past_the_last_system() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, MAX_CORNER);
+
+        // id 16 would be "east" of 15 if ids were treated as a flat line.
+        fx.client.move_fleet(&player, &(MAX_CORNER + 1));
+    }
+
+    #[test]
+    #[should_panic(expected = "target system is outside the galaxy")]
+    fn move_fleet_from_max_corner_cannot_step_below_the_last_row() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = fleet_with_one_scout_at(&env, &fx, MAX_CORNER);
+
+        // (3,4) does not exist on a 4x4 grid.
+        fx.client.move_fleet(&player, &(MAX_CORNER + 4));
     }
 
     // ── fleet power ────────────────────────────────────────────────────────[...]

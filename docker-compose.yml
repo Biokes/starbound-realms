@@ -9,9 +9,16 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: starbound
     ports:
-      - "5432:5432"
+      # Override with POSTGRES_PORT when 5432 is already taken on the host
+      # (the backend full-stack integration test uses this, see #309).
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d starbound"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
 
   backend:
     build: ./backend
