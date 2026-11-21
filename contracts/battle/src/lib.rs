@@ -174,6 +174,10 @@ impl BattleContract {
         attacker.require_auth();
         require_not_paused(&env);
 
+        if attacker == defender {
+            panic!("cannot attack your own system");
+        }
+
         if has_active_pact(&env, &attacker, &defender) {
             panic!("cannot attack a player you have an active pact with");
         }
@@ -826,6 +830,18 @@ mod tests {
 
         let (authorizer, _) = env.auths().into_iter().next().unwrap();
         assert_eq!(authorizer, attacker);
+    }
+
+    #[test]
+    #[should_panic(expected = "cannot attack your own system")]
+    fn resolve_battle_panics_when_attacker_and_defender_are_the_same() {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let player = Address::generate(&env);
+        fx.galaxy.seed_system(&player, &5);
+        fx.fleet.seed_fleet(&player, &fleet_of(10, 10, 10, 10));
+
+        fx.client.resolve_battle(&player, &player, &1);
     }
 
     #[test]
