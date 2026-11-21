@@ -60,6 +60,8 @@ app.use(standardLimiter);
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
+app.get('/health/liveness', (req, res) => handleLivenessCheck(req, res));
+app.get('/health/readiness', (req, res) => void handleReadinessCheck(req, res, db));
 app.get('/health', (req, res) => void handleHealthCheck(req, res, db));
 app.use('/galaxy', createGalaxyRouter(db));
 app.use('/player', createPlayerRouter(db));
@@ -134,6 +136,58 @@ function startIndexerIfConfigured() {
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Liveness check: returns 200 if the process is up and can handle requests.
+ * Does not check external dependencies. Used by orchestrators to determine
+ * if the process should be restarted.
+ */
+function handleLivenessCheck(_req: express.Request, res: express.Response) {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+}
+
+/**
+ * Readiness check: returns 200 only if the service can actually serve correct
+ * data (database reachable, RPC not stalled). Returns 503 if any dependency
+ * is unavailable. Used by orchestrators to route traffic only to ready instances.
+ */
+async function handleReadinessCheck(_req: express.Request, res: express.Response, pool: Pool) {
+  const checks: Record<string, string> = { database: 'ok', rpc: 'ok' };
+
+  try {
+    await pool.query('SELECT 1');
+  } catch {
+    checks.database = 'unreachable';
+  }
+
+  const rpcUrl = process.env.SOROBAN_RPC_URL;
+  if (!rpcUrl) {
+    checks.rpc = 'not_configured';
+  } else {
+    try {
+      const rpc = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'getLatestLedger', params: {} }),
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!rpc.ok) checks.rpc = 'unreachable';
+    } catch {
+      checks.rpc = 'unreachable';
+    }
+  }
+
+  const ready = Object.values(checks).every((value) => value === 'ok');
+  res.status(ready ? 200 : 503).json({ 
+    status: ready ? 'ready' : 'not_ready', 
+    checks, 
+    timestamp: new Date().toISOString() 
+  });
+}
+
+/**
+ * Combined health check (legacy): checks both liveness and readiness.
+ * Returns 200 if all checks pass, 503 if any dependency is unavailable.
+ */
 async function handleHealthCheck(_req: express.Request, res: express.Response, pool: Pool) {
   const checks: Record<string, string> = { database: 'ok', rpc: 'ok' };
   try { await pool.query('SELECT 1'); } catch { checks.database = 'unreachable'; }
