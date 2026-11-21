@@ -3,6 +3,8 @@ import { Pool } from 'pg';
 import { runIndexerPollCycle, startEventListener, EventListenerHandle } from './eventListener';
 import { fetchIndexerCursor, saveIndexerCursor } from '../db/queries';
 import { EventBroadcaster } from './processor';
+import { CircuitBreaker, CircuitState } from './circuitBreaker';
+import { log } from '../logger';
 
 /** A poll cycle that returns the ledger the next cycle should resume from. */
 export type PollCycle = (startLedger: number) => Promise<number>;
@@ -43,15 +45,25 @@ export interface StartIndexerOptions {
 
 /**
  * Reads the persisted ledger cursor and starts the event listener loop, with
- * each cycle's cursor written back so it survives a restart.
+ * each cycle's cursor written back so it survives a restart. Includes a circuit
+ * breaker to protect against RPC failures (#232).
  */
 export async function startIndexer(options: StartIndexerOptions): Promise<EventListenerHandle> {
   const server = new rpc.Server(options.rpcUrl, { allowHttp: options.allowHttp ?? false });
   const startLedger = await fetchIndexerCursor(options.db);
 
+  // Circuit breaker: open after 5 consecutive failures, retry after 30s cooldown
+  const circuitBreaker = new CircuitBreaker({
+    failureThreshold: 5,
+    cooldownMs: 30_000,
+    onStateChange: (state: CircuitState) => {
+      log('warn', `RPC circuit breaker state changed`, { state });
+    },
+  });
+
   return startEventListener({
     runPollCycle: createPersistingPollCycle(
-      (ledger) => runIndexerPollCycle(server, options.db, options.contractIds, ledger, options.broadcast),
+      (ledger) => runIndexerPollCycle(server, options.db, options.contractIds, ledger, options.broadcast, circuitBreaker),
       (ledger) => saveIndexerCursor(options.db, ledger)
     ),
     startLedger,

@@ -1,6 +1,7 @@
 import { rpc, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { Pool } from 'pg';
 import { processEvent, ContractEvent, EventBroadcaster } from './processor';
+import { CircuitBreaker, CircuitState } from './circuitBreaker';
 
 // ── Decoding ──────────────────────────────────────────────────────────────────
 
@@ -35,15 +36,22 @@ export function decodeContractEvents(rawEvents: rpc.Api.EventResponse[]): Contra
 export async function fetchContractEvents(
   server: rpc.Server,
   contractIds: string[],
-  startLedger: number
+  startLedger: number,
+  circuitBreaker?: CircuitBreaker
 ): Promise<rpc.Api.GetEventsResponse> {
   // NOTE: the RPC default page size (100 events) applies here — a poll cycle
   // that falls behind by more than that will miss events. Paginating via the
   // response `cursor` until it's caught up is left as a follow-up.
-  return server.getEvents({
+  const fetchFn = () => server.getEvents({
     startLedger,
     filters: [{ type: 'contract', contractIds }],
   });
+
+  if (circuitBreaker) {
+    return circuitBreaker.execute(fetchFn);
+  }
+
+  return fetchFn();
 }
 
 // ── Persisting ────────────────────────────────────────────────────────────────
@@ -69,15 +77,17 @@ async function persistContractEvents(
  * Runs one indexer poll cycle: fetch new events since `startLedger`, decode
  * them, persist them, and return the ledger to resume from on the next cycle.
  * An optional `broadcast` callback pushes each persisted event to WebSocket clients.
+ * An optional `circuitBreaker` protects against RPC failures.
  */
 export async function runIndexerPollCycle(
   server: rpc.Server,
   db: Pool,
   contractIds: string[],
   startLedger: number,
-  broadcast?: EventBroadcaster
+  broadcast?: EventBroadcaster,
+  circuitBreaker?: CircuitBreaker
 ): Promise<number> {
-  const response = await fetchContractEvents(server, contractIds, startLedger);
+  const response = await fetchContractEvents(server, contractIds, startLedger, circuitBreaker);
   const events = decodeContractEvents(response.events);
 
   await persistContractEvents(db, events, broadcast);
