@@ -219,6 +219,8 @@ impl GalaxyMapContract {
         let cost = 100u128 * next_level as u128;
 
         system.upgrade_level = next_level;
+        system.defense_rating = system.defense_rating.saturating_add(2);
+        system.resource_yield = system.resource_yield.saturating_add(5);
         env.storage()
             .persistent()
             .set(&DataKey::System(system_id), &system);
@@ -1239,5 +1241,51 @@ mod tests {
         client.pause(&admin);
 
         client.transfer_ownership(&owner, &0, &new_owner);
+    }
+
+    #[test]
+    fn test_system_upgrade_level_and_stat_boost() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+
+        client.claim_system(&player, &0);
+        let initial = client.get_system(&0);
+        assert_eq!(initial.upgrade_level, 0);
+
+        client.upgrade_system(&player, &0);
+        let upgraded = client.get_system(&0);
+        assert_eq!(upgraded.upgrade_level, 1);
+        assert_eq!(upgraded.defense_rating, initial.defense_rating + 2);
+        assert_eq!(upgraded.resource_yield, initial.resource_yield + 5);
+
+        client.upgrade_system(&player, &0);
+        let level2 = client.get_system(&0);
+        assert_eq!(level2.upgrade_level, 2);
+        assert_eq!(level2.defense_rating, initial.defense_rating + 4);
+    }
+
+    #[test]
+    #[should_panic(expected = "system is not owned by the caller")]
+    fn test_upgrade_system_panics_for_non_owner() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        let stranger = Address::generate(&env);
+
+        client.claim_system(&owner, &0);
+        client.upgrade_system(&stranger, &0);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn test_upgrade_system_panics_when_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+
+        client.claim_system(&player, &0);
+        client.pause(&admin);
+        client.upgrade_system(&player, &0);
     }
 }
