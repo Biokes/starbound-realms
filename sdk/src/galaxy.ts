@@ -1,5 +1,6 @@
 import { Contract, nativeToScVal } from '@stellar/stellar-sdk';
 import { StarboundClient, TransactionSigner } from './client.js';
+import { validateStellarAddress, validateNonNegativeInteger } from './errors.js';
 
 export interface StarSystem {
   systemId: number;
@@ -61,6 +62,7 @@ export class GalaxyClient {
    * @throws If the system ID is out of range or the simulation fails.
    */
   async getSystem(systemId: number): Promise<StarSystem> {
+    validateNonNegativeInteger(systemId, 'systemId');
     const raw = await this.client.simulateReadCall(this.client.contractIds.galaxyMap, 'get_system', [
       nativeToScVal(systemId, { type: 'u32' }),
     ]);
@@ -75,6 +77,7 @@ export class GalaxyClient {
    *   Returns an empty array if the player owns no systems.
    */
   async getPlayerSystems(playerAddress: string): Promise<number[]> {
+    validateStellarAddress(playerAddress);
     return this.client.simulateReadCall(this.client.contractIds.galaxyMap, 'get_player_systems', [
       nativeToScVal(playerAddress, { type: 'address' }),
     ]);
@@ -101,6 +104,8 @@ export class GalaxyClient {
    *   transaction fails.
    */
   async claimSystem(playerAddress: string, systemId: number, sign: TransactionSigner): Promise<void> {
+    validateStellarAddress(playerAddress);
+    validateNonNegativeInteger(systemId, 'systemId');
     const contract = new Contract(this.client.contractIds.galaxyMap);
     await this.client.submitTransaction({
       sourceAddress: playerAddress,

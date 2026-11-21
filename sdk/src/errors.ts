@@ -22,6 +22,19 @@ export class NetworkError extends Error {
 }
 
 /**
+ * Thrown when client-side validation of input parameters fails before a
+ * transaction is built (#237). These errors indicate a programming error
+ * in the calling code, not a network or on-chain issue.
+ */
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ValidationError';
+    Object.setPrototypeOf(this, ValidationError.prototype);
+  }
+}
+
+/**
  * Thrown when the Soroban simulation of a read-only or write call fails.
  * The simulation never touched the ledger — no fee was charged.
  */
@@ -79,4 +92,58 @@ export function isTransientNetworkError(err: unknown): boolean {
     msg.includes('etimedout') ||
     msg.includes('socket hang up')
   );
+}
+
+/**
+ * Validates a Stellar address format (G... or C..., 56 characters).
+ *
+ * @param address - The address string to validate.
+ * @throws {ValidationError} If the address format is invalid.
+ */
+export function validateStellarAddress(address: string): void {
+  if (!address || typeof address !== 'string') {
+    throw new ValidationError('Address must be a non-empty string');
+  }
+  if (address.length !== 56) {
+    throw new ValidationError(`Invalid address length: expected 56 characters, got ${address.length}`);
+  }
+  if (!address.startsWith('G') && !address.startsWith('C')) {
+    throw new ValidationError('Address must start with G (account) or C (contract)');
+  }
+  // Basic character set check (base32)
+  if (!/^[A-Z2-7]+$/.test(address)) {
+    throw new ValidationError('Address contains invalid characters (must be base32)');
+  }
+}
+
+/**
+ * Validates that a value is a non-negative integer.
+ *
+ * @param value - The value to validate.
+ * @param name - The parameter name for error messages.
+ * @throws {ValidationError} If the value is not a non-negative integer.
+ */
+export function validateNonNegativeInteger(value: number, name: string): void {
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new ValidationError(`${name} must be an integer, got ${typeof value}`);
+  }
+  if (value < 0) {
+    throw new ValidationError(`${name} must be non-negative, got ${value}`);
+  }
+}
+
+/**
+ * Validates that a value is a positive integer.
+ *
+ * @param value - The value to validate.
+ * @param name - The parameter name for error messages.
+ * @throws {ValidationError} If the value is not a positive integer.
+ */
+export function validatePositiveInteger(value: number, name: string): void {
+  if (typeof value !== 'number' || !Number.isInteger(value)) {
+    throw new ValidationError(`${name} must be an integer, got ${typeof value}`);
+  }
+  if (value <= 0) {
+    throw new ValidationError(`${name} must be positive, got ${value}`);
+  }
 }

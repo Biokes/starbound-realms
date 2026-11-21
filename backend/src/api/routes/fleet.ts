@@ -2,12 +2,13 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { Pool } from 'pg';
 import { fetchPlayerByAddress, fetchFleetSnapshot } from '../../db/queries';
 import { parseStellarAddress, validateParam } from '../validators';
+import { addressLimiter } from '../middleware/rateLimit';
 
 export function createFleetRouter(db: Pool): Router {
   const router = Router();
 
   router.param('address', validateParam(parseStellarAddress));
-  router.get('/:address', fetchPlayerFleet(db));
+  router.get('/:address', addressLimiter, fetchPlayerFleet(db));
 
   return router;
 }
