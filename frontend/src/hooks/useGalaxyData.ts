@@ -44,6 +44,17 @@ function toGalaxySystem(raw: RawGalaxySystem): GalaxySystem {
   };
 }
 
+/** Filters a list of star systems to only those owned by the given wallet address. */
+export function getOwnedSystems(
+  systems: GalaxySystem[],
+  walletAddress: string | null
+): GalaxySystem[] {
+  if (!walletAddress) {
+    return [];
+  }
+  return systems.filter((system) => system.owner === walletAddress);
+}
+
 export interface UseGalaxyDataResult {
   systems: GalaxySystem[];
   isLoading: boolean;

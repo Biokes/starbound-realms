@@ -1,0 +1,94 @@
+{
+  "nav": {
+    "brand": "✦ STARBOUND REALMS",
+    "leaderboard": "Leaderboard",
+    "github": "GitHub",
+    "docs": "Docs"
+  },
+  "hero": {
+    "badge": "⚡ Built on Stellar · Powered by Soroban",
+    "title": "Conquer the Galaxy.\nOwn Everything.",
+    "subtitle": "A fully on-chain strategy game on the Stellar network. Claim star systems, mine real Stellar assets, build fleets, and battle for galactic dominance — no servers, no trust required.",
+    "connect": "Connect Freighter",
+    "connected": "✓ Connected — {{address}}",
+    "connectedAria": "Connected wallet: {{address}}",
+    "copy": "📋 Copy",
+    "copied": "Copied!",
+    "copyAria": "Copy wallet address to clipboard",
+    "viewGithub": "View on GitHub →",
+    "gameLoop": [
+      "Claim Systems",
+      "Mine Resources",
+      "Build Fleets",
+      "Conquer Neighbors",
+      "Dominate the Galaxy"
+    ]
+  },
+  "features": {
+    "galaxy": {
+      "title": "On-chain Galaxy",
+      "desc": "Every star system, every owner, every battle — stored permanently on Stellar."
+    },
+    "combat": {
+      "title": "Real Combat",
+      "desc": "Deploy fleets, conquer neighbors, defend territory. Battles resolved by Soroban contracts."
+    },
+    "mine": {
+      "title": "Mine Resources",
+      "desc": "Iron, Energy, Plasma — real Stellar assets tradeable on the Stellar DEX."
+    },
+    "trustless": {
+      "title": "Truly Trustless",
+      "desc": "No admin keys. No hidden logic. No server controls game state. Just contracts."
+    }
+  },
+  "sections": {
+    "recentlyActive": "Recently active",
+    "leaderboard": "Leaderboard",
+    "theGalaxy": "The Galaxy",
+    "yourProfile": "Your Profile",
+    "trade": "Trade",
+    "battleHistory": "Battle History",
+    "recentBattles": "Recent Battles"
+  },
+  "footer": {
+    "openSource": "Open source · ",
+    "contribute": "Contribute on GitHub",
+    "builtOn": " · Built on ",
+    "stellar": "Stellar"
+  },
+  "galaxy": {
+    "viewportAria": "Galaxy map viewport",
+    "mapAria": "Galaxy map",
+    "title": "System {{systemId}} — {{resourceType}}",
+    "unclaimed": "unclaimed",
+    "ownedByYou": "owned by you",
+    "ownedBy": "owned by {{owner}}",
+    "ariaLabel": "System {{systemId}}, {{ownership}}, resource {{resourceType}}{{event}}",
+    "activeEvent": ", active event: {{type}}"
+  },
+  "filters": {
+    "title": "Filter Systems",
+    "resource": "Resource",
+    "allResources": "All Resources",
+    "ownership": "Ownership",
+    "allOwnership": "All Ownership",
+    "mine": "Mine",
+    "unclaimed": "Unclaimed",
+    "others": "Others",
+    "filterByResource": "Filter by resource",
+    "filterByOwnership": "Filter by ownership",
+    "reset": "Reset Filters"
+  },
+  "minimap": {
+    "ariaLabel": "Galaxy minimap",
+    "viewportAria": "Current viewport area"
+  },
+  "sidebar": {
+    "title": "Owned Systems",
+    "empty": "No systems claimed yet",
+    "notConnected": "Connect wallet to view owned systems",
+    "systemItem": "System {{systemId}} ({{coordX}}, {{coordY}}) — {{resourceType}}",
+    "jumpToSystem": "Jump to system {{systemId}}"
+  }
+}

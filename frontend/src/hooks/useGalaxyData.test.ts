@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { useGalaxyData } from './useGalaxyData';
+import { useGalaxyData, getOwnedSystems, GalaxySystem } from './useGalaxyData';
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
@@ -44,6 +44,7 @@ describe('useGalaxyData', () => {
         resourceYield: 25,
         defenseRating: 12,
         lastClaimed: 1000,
+        activeEvent: null,
       },
     ]);
   });
@@ -106,5 +107,64 @@ describe('useGalaxyData refetch', () => {
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(result.current.systems[0].systemId).toBe(2);
+  });
+});
+
+describe('getOwnedSystems', () => {
+  const sampleSystems: GalaxySystem[] = [
+    {
+      systemId: 1,
+      owner: 'GME',
+      coordX: 0,
+      coordY: 0,
+      resourceType: 'Iron',
+      resourceYield: 10,
+      defenseRating: 5,
+      lastClaimed: 0,
+    },
+    {
+      systemId: 2,
+      owner: 'GOTHER',
+      coordX: 1,
+      coordY: 0,
+      resourceType: 'Energy',
+      resourceYield: 15,
+      defenseRating: 8,
+      lastClaimed: 0,
+    },
+    {
+      systemId: 3,
+      owner: null,
+      coordX: 2,
+      coordY: 0,
+      resourceType: 'Plasma',
+      resourceYield: 20,
+      defenseRating: 10,
+      lastClaimed: 0,
+    },
+    {
+      systemId: 4,
+      owner: 'GME',
+      coordX: 3,
+      coordY: 0,
+      resourceType: 'Plasma',
+      resourceYield: 30,
+      defenseRating: 15,
+      lastClaimed: 0,
+    },
+  ];
+
+  it('returns an empty array when walletAddress is null', () => {
+    expect(getOwnedSystems(sampleSystems, null)).toEqual([]);
+  });
+
+  it('filters systems owned by the given wallet address', () => {
+    const owned = getOwnedSystems(sampleSystems, 'GME');
+    expect(owned).toHaveLength(2);
+    expect(owned.map((s) => s.systemId)).toEqual([1, 4]);
+  });
+
+  it('returns empty array when wallet owns no systems', () => {
+    expect(getOwnedSystems(sampleSystems, 'GNOBODY')).toEqual([]);
   });
 });

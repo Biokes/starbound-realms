@@ -1,4 +1,4 @@
-import { Asset, Keypair, nativeToScVal, Operation, xdr } from '@stellar/stellar-sdk';
+import { Asset, Contract, Keypair, nativeToScVal, Operation, xdr } from '@stellar/stellar-sdk';
 import { StarboundClient, TransactionSigner } from './client.js';
 
 export type ResourceType = 'Iron' | 'Energy' | 'Plasma';
@@ -134,14 +134,14 @@ export class ResourcesClient {
    *   transaction fails.
    */
   async upgradeSystem(playerAddress: string, systemId: number, sign: TransactionSigner): Promise<void> {
-    return this.client.submitContractCall({
+    const contract = new Contract(this.client.contractIds.resources);
+    await this.client.submitTransaction({
       sourceAddress: playerAddress,
-      contractId: this.client.contractIds.resources,
-      method: 'upgrade_system',
-      args: [
+      operation: contract.call(
+        'upgrade_system',
         nativeToScVal(playerAddress, { type: 'address' }),
-        nativeToScVal(systemId, { type: 'u32' }),
-      ],
+        nativeToScVal(systemId, { type: 'u32' })
+      ),
       sign,
     });
   }

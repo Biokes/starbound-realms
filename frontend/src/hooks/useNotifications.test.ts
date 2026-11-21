@@ -6,7 +6,7 @@ const PLAYER_ADDRESS = 'G' + 'A'.repeat(55);
 
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn());
-  vi.useFakeTimers();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
 });
 
 afterEach(() => {

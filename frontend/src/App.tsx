@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStellar } from './hooks/useStellar';
 import { useLeaderboard } from './hooks/useLeaderboard';
 import { useRecentlyActivePlayers } from './hooks/useRecentlyActivePlayers';
@@ -247,31 +248,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
 };
 
-// ── Feature data ──────────────────────────────────────────────────────────────
-
-const features = [
-  {
-    icon: '🌌',
-    title: 'On-chain Galaxy',
-    desc: 'Every star system, every owner, every battle — stored permanently on Stellar.',
-  },
-  {
-    icon: '⚔️',
-    title: 'Real Combat',
-    desc: 'Deploy fleets, conquer neighbors, defend territory. Battles resolved by Soroban contracts.',
-  },
-  {
-    icon: '⛏️',
-    title: 'Mine Resources',
-    desc: 'Iron, Energy, Plasma — real Stellar assets tradeable on the Stellar DEX.',
-  },
-  {
-    icon: '🔐',
-    title: 'Truly Trustless',
-    desc: 'No admin keys. No hidden logic. No server controls game state. Just contracts.',
-  },
-];
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -283,6 +259,7 @@ export default function App() {
 }
 
 function AppContent() {
+  const { t } = useTranslation();
   const { walletAddress, isConnected: walletConnected, error: walletError, connectWallet, signTransaction } =
     useStellar();
   useNotification(walletError);
@@ -296,7 +273,7 @@ function AppContent() {
 
       {/* Nav */}
       <nav style={styles.nav}>
-        <span style={styles.navLogo}>✦ STARBOUND REALMS</span>
+        <span style={styles.navLogo}>{t('nav.brand')}</span>
         <ul style={styles.navLinks}>
           <li>
             <NetworkBadge network={NETWORK_LABEL} />
@@ -309,7 +286,7 @@ function AppContent() {
               onClick={() => setShowLeaderboard((open) => !open)}
               aria-expanded={showLeaderboard}
             >
-              Leaderboard
+              {t('nav.leaderboard')}
             </button>
           </li>
           <li>
@@ -319,7 +296,7 @@ function AppContent() {
               rel="noreferrer"
               style={styles.navLink}
             >
-              GitHub
+              {t('nav.github')}
             </a>
           </li>
           <li>
@@ -329,7 +306,7 @@ function AppContent() {
               rel="noreferrer"
               style={styles.navLink}
             >
-              Docs
+              {t('nav.docs')}
             </a>
           </li>
         </ul>
@@ -337,7 +314,7 @@ function AppContent() {
 
       {/* Hero */}
       <section style={styles.hero}>
-        <span style={styles.badge}>⚡ Built on Stellar · Powered by Soroban</span>
+        <span style={styles.badge}>{t('hero.badge')}</span>
 
         <h1 style={styles.title}>
           Conquer the Galaxy.
@@ -346,9 +323,7 @@ function AppContent() {
         </h1>
 
         <p style={styles.subtitle}>
-          A fully on-chain strategy game on the Stellar network. Claim star
-          systems, mine real Stellar assets, build fleets, and battle for
-          galactic dominance — no servers, no trust required.
+          {t('hero.subtitle')}
         </p>
 
         <div style={styles.ctaGroup}>
@@ -357,9 +332,9 @@ function AppContent() {
               <button
                 type="button"
                 style={styles.walletConnected}
-                aria-label={`Connected wallet: ${walletAddress}`}
+                aria-label={t('hero.connectedAria', { address: walletAddress })}
               >
-                ✓ Connected — {truncateAddress(walletAddress)}
+                {t('hero.connected', { address: truncateAddress(walletAddress) })}
               </button>
               {/* #125: Copy-to-clipboard button for wallet address */}
               <button
@@ -370,14 +345,14 @@ function AppContent() {
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
-                aria-label="Copy wallet address to clipboard"
+                aria-label={t('hero.copyAria')}
               >
-                {copied ? 'Copied!' : '📋 Copy'}
+                {copied ? t('hero.copied') : t('hero.copy')}
               </button>
             </div>
           ) : (
             <button style={styles.btnPrimary} onClick={connectWallet}>
-              Connect Freighter
+              {t('hero.connect')}
             </button>
           )}
           <a
@@ -385,13 +360,13 @@ function AppContent() {
             target="_blank"
             rel="noreferrer"
           >
-            <button style={styles.btnSecondary}>View on GitHub →</button>
+            <button style={styles.btnSecondary}>{t('hero.viewGithub')}</button>
           </a>
         </div>
 
         {/* Game loop */}
         <div style={styles.gameLoop}>
-          {['Claim Systems', 'Mine Resources', 'Build Fleets', 'Conquer Neighbors', 'Dominate the Galaxy'].map(
+          {(t('hero.gameLoop', { returnObjects: true }) as string[]).map(
             (step, i, arr) => (
               <React.Fragment key={step}>
                 <span style={styles.gameLoopStep}>{step}</span>
@@ -419,7 +394,12 @@ function AppContent() {
 
       {/* Features */}
       <div style={styles.features}>
-        {features.map((f) => (
+        {[
+          { icon: '🌌', title: t('features.galaxy.title'), desc: t('features.galaxy.desc') },
+          { icon: '⚔️', title: t('features.combat.title'), desc: t('features.combat.desc') },
+          { icon: '⛏️', title: t('features.mine.title'), desc: t('features.mine.desc') },
+          { icon: '🔐', title: t('features.trustless.title'), desc: t('features.trustless.desc') },
+        ].map((f) => (
           <div key={f.title} style={styles.featureCard}>
             <div style={styles.featureIcon}>{f.icon}</div>
             <div style={styles.featureTitle}>{f.title}</div>
@@ -431,23 +411,23 @@ function AppContent() {
       {/* Footer */}
       <footer style={styles.footer}>
         <p>
-          Open source ·{' '}
+          {t('footer.openSource')}
           <a
             href="https://github.com/OlaGreat/starbound-realms"
             style={styles.footerLink}
             target="_blank"
             rel="noreferrer"
           >
-            Contribute on GitHub
+            {t('footer.contribute')}
           </a>{' '}
-          · Built on{' '}
+          {t('footer.builtOn')}
           <a
             href="https://stellar.org"
             style={styles.footerLink}
             target="_blank"
             rel="noreferrer"
           >
-            Stellar
+            {t('footer.stellar')}
           </a>
         </p>
       </footer>
@@ -462,11 +442,12 @@ function AppContent() {
  * rate-limited `GET /leaderboard` call only fires while the section is open.
  */
 function LeaderboardSection() {
+  const { t } = useTranslation();
   const { players, isLoading, error } = useLeaderboard(BACKEND_URL);
 
   return (
     <section style={styles.leaderboardSection}>
-      <h2 style={styles.leaderboardTitle}>Leaderboard</h2>
+      <h2 style={styles.leaderboardTitle}>{t('sections.leaderboard')}</h2>
       <Leaderboard players={players} isLoading={isLoading} error={error} />
     </section>
   );
@@ -475,12 +456,13 @@ function LeaderboardSection() {
 // ── Recently active players ───────────────────────────────────────────────────
 
 function RecentlyActivePlayersSection() {
+  const { t } = useTranslation();
   const { players, isLoading, error } = useRecentlyActivePlayers(BACKEND_URL);
 
   return (
     <section style={styles.leaderboardSection} aria-labelledby="recently-active-title">
       <h2 id="recently-active-title" style={styles.leaderboardTitle}>
-        Recently active
+        {t('sections.recentlyActive')}
       </h2>
       <RecentlyActivePlayers players={players} isLoading={isLoading} error={error} />
     </section>

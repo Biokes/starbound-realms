@@ -2,3 +2,5 @@ packages:
   - sdk
   - frontend
   - backend
+allowBuilds:
+  esbuild: true
