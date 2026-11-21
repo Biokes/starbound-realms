@@ -29,7 +29,7 @@ describe('GalaxyEmptyState', () => {
   it('points the player at the claim flow', () => {
     render(<GalaxyEmptyState ownedCount={0} claimedCount={0} />);
 
-    expect(screen.getByText(/claim/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/claim/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/mining resources/i)).toBeInTheDocument();
   });
 });

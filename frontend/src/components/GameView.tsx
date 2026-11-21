@@ -247,7 +247,12 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
               ownedCount={systems.filter((s) => s.owner === walletAddress).length}
               claimedCount={systems.filter((s) => s.owner).length}
             />
-            <GalaxyMap systems={systems} walletAddress={walletAddress} onSelectSystem={selectSystem} />
+            <GalaxyMap
+              systems={systems}
+              walletAddress={walletAddress}
+              onSelectSystem={selectSystem}
+              selectedSystemId={selectedSystemId}
+            />
             <StarSystem
               system={selectedSystem}
               walletAddress={walletAddress}

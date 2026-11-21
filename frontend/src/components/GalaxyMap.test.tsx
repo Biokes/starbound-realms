@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { getGridDimensions, getSystemAriaLabel, getSystemColor, GalaxyMap } from './GalaxyMap';
+import {
+  getGridDimensions,
+  getSystemAriaLabel,
+  getSystemColor,
+  filterSystems,
+  GalaxyMap,
+} from './GalaxyMap';
 import { GalaxySystem } from '../hooks/useGalaxyData';
 
 function makeSystem(overrides: Partial<GalaxySystem> = {}): GalaxySystem {
@@ -166,5 +172,138 @@ describe('GalaxyMap', () => {
     render(<GalaxyMap systems={[]} walletAddress={null} />);
 
     expect(screen.queryAllByTestId(/galaxy-cell-/)).toHaveLength(0);
+  });
+});
+
+describe('filterSystems logic', () => {
+  const sampleSystems: GalaxySystem[] = [
+    makeSystem({ systemId: 1, resourceType: 'Iron', owner: 'GME' }),
+    makeSystem({ systemId: 2, resourceType: 'Energy', owner: 'GOTHER' }),
+    makeSystem({ systemId: 3, resourceType: 'Plasma', owner: null }),
+    makeSystem({ systemId: 4, resourceType: 'Plasma', owner: 'GME' }),
+    makeSystem({ systemId: 5, resourceType: 'Iron', owner: null }),
+  ];
+
+  it('returns all systems when no filters are set or filters are "all"', () => {
+    expect(filterSystems(sampleSystems, {}, 'GME')).toHaveLength(5);
+    expect(filterSystems(sampleSystems, { resource: 'all', ownership: 'all' }, 'GME')).toHaveLength(5);
+  });
+
+  it('filters by resource type', () => {
+    const plasma = filterSystems(sampleSystems, { resource: 'Plasma' }, 'GME');
+    expect(plasma.map((s) => s.systemId)).toEqual([3, 4]);
+
+    const energy = filterSystems(sampleSystems, { resource: 'Energy' }, 'GME');
+    expect(energy.map((s) => s.systemId)).toEqual([2]);
+  });
+
+  it('filters by ownership: mine', () => {
+    const mine = filterSystems(sampleSystems, { ownership: 'mine' }, 'GME');
+    expect(mine.map((s) => s.systemId)).toEqual([1, 4]);
+  });
+
+  it('filters by ownership: unclaimed', () => {
+    const unclaimed = filterSystems(sampleSystems, { ownership: 'unclaimed' }, 'GME');
+    expect(unclaimed.map((s) => s.systemId)).toEqual([3, 5]);
+  });
+
+  it('filters by ownership: others', () => {
+    const others = filterSystems(sampleSystems, { ownership: 'others' }, 'GME');
+    expect(others.map((s) => s.systemId)).toEqual([2]);
+  });
+
+  it('combines resource and ownership filters (e.g. unclaimed Plasma)', () => {
+    const unclaimedPlasma = filterSystems(
+      sampleSystems,
+      { resource: 'Plasma', ownership: 'unclaimed' },
+      'GME'
+    );
+    expect(unclaimedPlasma.map((s) => s.systemId)).toEqual([3]);
+
+    const myPlasma = filterSystems(
+      sampleSystems,
+      { resource: 'Plasma', ownership: 'mine' },
+      'GME'
+    );
+    expect(myPlasma.map((s) => s.systemId)).toEqual([4]);
+  });
+});
+
+describe('GalaxyMap filtering and integration', () => {
+  const sampleSystems: GalaxySystem[] = [
+    makeSystem({ systemId: 1, coordX: 0, coordY: 0, resourceType: 'Iron', owner: 'GME' }),
+    makeSystem({ systemId: 2, coordX: 1, coordY: 0, resourceType: 'Energy', owner: 'GOTHER' }),
+    makeSystem({ systemId: 3, coordX: 2, coordY: 0, resourceType: 'Plasma', owner: null }),
+    makeSystem({ systemId: 4, coordX: 3, coordY: 0, resourceType: 'Plasma', owner: 'GME' }),
+  ];
+
+  it('filters visible systems when resource filter is changed', () => {
+    render(<GalaxyMap systems={sampleSystems} walletAddress="GME" />);
+
+    expect(screen.getAllByTestId(/galaxy-cell-/)).toHaveLength(4);
+
+    const resourceSelect = screen.getByTestId('resource-filter');
+    fireEvent.change(resourceSelect, { target: { value: 'Plasma' } });
+
+    const cells = screen.getAllByTestId(/galaxy-cell-/);
+    expect(cells).toHaveLength(2);
+    expect(screen.getByTestId('galaxy-cell-3')).toBeInTheDocument();
+    expect(screen.getByTestId('galaxy-cell-4')).toBeInTheDocument();
+    expect(screen.queryByTestId('galaxy-cell-1')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('galaxy-cell-2')).not.toBeInTheDocument();
+  });
+
+  it('filters visible systems when ownership filter is changed', () => {
+    render(<GalaxyMap systems={sampleSystems} walletAddress="GME" />);
+
+    const ownershipSelect = screen.getByTestId('ownership-filter');
+    fireEvent.change(ownershipSelect, { target: { value: 'mine' } });
+
+    const cells = screen.getAllByTestId(/galaxy-cell-/);
+    expect(cells).toHaveLength(2);
+    expect(screen.getByTestId('galaxy-cell-1')).toBeInTheDocument();
+    expect(screen.getByTestId('galaxy-cell-4')).toBeInTheDocument();
+    expect(screen.queryByTestId('galaxy-cell-2')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('galaxy-cell-3')).not.toBeInTheDocument();
+  });
+
+  it('resets filters when the Reset button is clicked', () => {
+    render(<GalaxyMap systems={sampleSystems} walletAddress="GME" />);
+
+    fireEvent.change(screen.getByTestId('resource-filter'), { target: { value: 'Energy' } });
+    expect(screen.getAllByTestId(/galaxy-cell-/)).toHaveLength(1);
+
+    const resetBtn = screen.getByTestId('reset-filters');
+    fireEvent.click(resetBtn);
+
+    expect(screen.getAllByTestId(/galaxy-cell-/)).toHaveLength(4);
+    expect(screen.queryByTestId('reset-filters')).not.toBeInTheDocument();
+  });
+
+  it('renders minimap reflecting the grid and viewport', () => {
+    render(<GalaxyMap systems={sampleSystems} walletAddress="GME" />);
+
+    expect(screen.getByTestId('galaxy-minimap')).toBeInTheDocument();
+    expect(screen.getByTestId('minimap-viewport-indicator')).toBeInTheDocument();
+  });
+
+  it('renders owned systems sidebar and selects system when clicked', () => {
+    let selectedId: number | null = null;
+    render(
+      <GalaxyMap
+        systems={sampleSystems}
+        walletAddress="GME"
+        onSelectSystem={(id) => {
+          selectedId = id;
+        }}
+      />
+    );
+
+    expect(screen.getByTestId('owned-systems-sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('owned-system-item-1')).toBeInTheDocument();
+    expect(screen.getByTestId('owned-system-item-4')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('owned-system-item-4'));
+    expect(selectedId).toBe(4);
   });
 });

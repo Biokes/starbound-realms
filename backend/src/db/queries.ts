@@ -321,6 +321,25 @@ export async function acceptTradeOffer(db: Pool, offerId: number, taker: string)
   return result.rows[0] ?? null;
 }
 
+export async function saveTradeOffer(db: Pool, offerId: string, offer: any, ledgerSequence: number) {
+  const result = await db.query(
+    `INSERT INTO trade_offers (offer_id, offer, ledger_sequence, status)
+     VALUES ($1, $2, $3, 'open')
+     ON CONFLICT (offer_id) DO UPDATE SET offer = $2, ledger_sequence = $3, updated_at = NOW()
+     RETURNING *`,
+    [offerId, typeof offer === 'string' ? offer : JSON.stringify(offer), ledgerSequence]
+  );
+  return result.rows[0];
+}
+
+export async function updateTradeOfferStatus(db: Pool, offerId: string, status: string) {
+  const result = await db.query(
+    `UPDATE trade_offers SET status = $2, updated_at = NOW() WHERE offer_id = $1 RETURNING *`,
+    [offerId, status]
+  );
+  return result.rows[0] ?? null;
+}
+
 // ── Galaxy Events (#207) ──────────────────────────────────────────────────────
 
 export async function saveGalaxyEvent(
