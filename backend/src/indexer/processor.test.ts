@@ -327,6 +327,68 @@ describe('processEvent — unknown topics', () => {
 
 // ── Notifications (#217) ──────────────────────────────────────────────────────
 
+describe('processEvent — unexpected topics', () => {
+  it('resolves without throwing for an unrecognised topic', async () => {
+    const event: ContractEvent = {
+      contractId: 'C_X',
+      topic: ['not_a_real_topic', 'GPLAYER'],
+      value: { anything: 1 },
+      ledgerSequence: 2100,
+    };
+
+    await expect(processEvent(db, event)).resolves.toBeUndefined();
+  });
+
+  it('makes no database call for an unrecognised topic', async () => {
+    const query = vi.fn();
+    const event: ContractEvent = {
+      contractId: 'C_X',
+      topic: ['not_a_real_topic'],
+      value: null,
+      ledgerSequence: 2200,
+    };
+
+    await processEvent({ query } as any, event);
+
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('treats an event with no topics as unrecognised', async () => {
+    const query = vi.fn();
+    const event: ContractEvent = {
+      contractId: 'C_X',
+      topic: [],
+      value: 1,
+      ledgerSequence: 2300,
+    };
+
+    await expect(processEvent({ query } as any, event)).resolves.toBeUndefined();
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it.each(['Claimed', 'claimed_extra', 'battle', 'mined '])(
+    'does not route the near-miss topic %j to any handler',
+    async (topic) => {
+      const query = vi.fn();
+      const broadcast = vi.fn();
+      const event: ContractEvent = {
+        contractId: 'C_X',
+        topic: [topic, 'GPLAYER'],
+        value: 7,
+        ledgerSequence: 2400,
+      };
+
+      await processEvent({ query } as any, event, broadcast);
+
+      expect(query).not.toHaveBeenCalled();
+      expect(upsertStarSystem).not.toHaveBeenCalled();
+      expect(saveBattle).not.toHaveBeenCalled();
+      expect(saveResourceEvent).not.toHaveBeenCalled();
+      expect(broadcast).not.toHaveBeenCalled();
+    }
+  );
+});
+
 describe('processEvent — battle_resolved creates notifications', () => {
   it('creates a battle_lost notification for the loser and battle_won for the winner', async () => {
     const event: ContractEvent = {
