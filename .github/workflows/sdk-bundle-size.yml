@@ -1,0 +1,47 @@
+name: SDK Bundle Size
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'sdk/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+  workflow_dispatch:
+
+jobs:
+  sdk-bundle-size:
+    name: SDK Bundle Size Budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install SDK dependencies
+        run: pnpm install --frozen-lockfile --filter @starbound-realms/sdk...
+
+      - name: Build SDK
+        run: pnpm --filter @starbound-realms/sdk build
+
+      - name: Report and enforce SDK bundle size
+        shell: bash
+        run: |
+          set -euo pipefail
+          budget=256000 # 250 KiB
+          size=$(find sdk/dist -type f -name '*.js' -printf '%s\n' | awk '{ total += $1 } END { print total + 0 }')
+          kib=$(awk -v bytes="$size" 'BEGIN { printf "%.1f", bytes / 1024 }')
+          budget_kib=$(awk -v bytes="$budget" 'BEGIN { printf "%.0f", bytes / 1024 }')
+          echo "Built SDK JavaScript size: ${size} bytes (${kib} KiB); budget: ${budget} bytes (${budget_kib} KiB)."
+          if (( size > budget )); then
+            echo "SDK bundle size exceeds the 250 KiB budget." >&2
+            exit 1
+          fi
