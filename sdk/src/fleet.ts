@@ -1,5 +1,6 @@
 import { Contract, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import { StarboundClient, TransactionSigner } from './client.js';
+import { validateStellarAddress, validateNonNegativeInteger, validatePositiveInteger } from './errors.js';
 
 export type UnitType = 'Scout' | 'Fighter' | 'Cruiser' | 'Dreadnought';
 
@@ -133,6 +134,7 @@ export class FleetClient {
    * @throws If the player has no fleet on-chain or the simulation fails.
    */
   async getFleet(playerAddress: string): Promise<Fleet> {
+    validateStellarAddress(playerAddress);
     const raw = await this.client.simulateReadCall(this.client.contractIds.fleet, 'get_fleet', [
       nativeToScVal(playerAddress, { type: 'address' }),
     ]);
@@ -150,6 +152,8 @@ export class FleetClient {
    * @throws If the player has insufficient resources or the transaction fails.
    */
   async buildUnit(playerAddress: string, unitType: UnitType, count: number, sign: TransactionSigner): Promise<void> {
+    validateStellarAddress(playerAddress);
+    validatePositiveInteger(count, 'count');
     const contract = new Contract(this.client.contractIds.fleet);
     await this.client.submitTransaction({
       sourceAddress: playerAddress,
@@ -174,6 +178,8 @@ export class FleetClient {
    *   adjacent, or the transaction fails.
    */
   async moveFleet(playerAddress: string, targetSystemId: number, sign: TransactionSigner): Promise<void> {
+    validateStellarAddress(playerAddress);
+    validateNonNegativeInteger(targetSystemId, 'targetSystemId');
     const contract = new Contract(this.client.contractIds.fleet);
     await this.client.submitTransaction({
       sourceAddress: playerAddress,

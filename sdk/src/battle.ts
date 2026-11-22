@@ -1,5 +1,6 @@
 import { Contract, nativeToScVal, scValToNative } from '@stellar/stellar-sdk';
 import { StarboundClient, TransactionSigner } from './client.js';
+import { validateStellarAddress, validateNonNegativeInteger } from './errors.js';
 
 export interface BattleResult {
   battleId: number;
@@ -93,6 +94,7 @@ export class BattleClient {
    * @throws If no battle with the given ID exists or the simulation fails.
    */
   async getBattle(battleId: number): Promise<BattleResult> {
+    validateNonNegativeInteger(battleId, 'battleId');
     const raw = await this.client.simulateReadCall(this.client.contractIds.battle, 'get_battle', [
       nativeToScVal(BigInt(battleId), { type: 'u64' }),
     ]);
@@ -118,6 +120,9 @@ export class BattleClient {
     systemId: number,
     sign: TransactionSigner
   ): Promise<number> {
+    validateStellarAddress(attackerAddress);
+    validateStellarAddress(defenderAddress);
+    validateNonNegativeInteger(systemId, 'systemId');
     const contract = new Contract(this.client.contractIds.battle);
     const result = await this.client.submitTransaction({
       sourceAddress: attackerAddress,

@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import { Pool } from 'pg';
 import { createGalaxyRouter } from './api/routes/galaxy';
 import { createPlayerRouter } from './api/routes/player';
@@ -42,6 +43,17 @@ const PORT = process.env.PORT || 3000;
 const db = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // ── Middleware ────────────────────────────────────────────────────────────────
+
+// Security headers (#235)
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+      },
+    },
+  })
+);
 
 const corsOrigins = readCorsOrigins(process.env);
 

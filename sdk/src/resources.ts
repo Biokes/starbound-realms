@@ -1,5 +1,6 @@
 import { Asset, Contract, Keypair, nativeToScVal, Operation, xdr } from '@stellar/stellar-sdk';
 import { StarboundClient, TransactionSigner } from './client.js';
+import { validateStellarAddress, validateNonNegativeInteger } from './errors.js';
 
 export type ResourceType = 'Iron' | 'Energy' | 'Plasma';
 
@@ -62,6 +63,7 @@ export class ResourcesClient {
    *   (token amounts are 128-bit on Stellar).
    */
   async getBalance(playerAddress: string, resource: ResourceType): Promise<bigint> {
+    validateStellarAddress(playerAddress);
     return this.client.simulateReadCall(this.client.contractIds.resources, 'balance', [
       nativeToScVal(playerAddress, { type: 'address' }),
       resourceTypeToScVal(resource),
@@ -76,6 +78,7 @@ export class ResourcesClient {
    *   balance as a `bigint`. All three resources are fetched in parallel.
    */
   async getAllBalances(playerAddress: string): Promise<Record<ResourceType, bigint>> {
+    validateStellarAddress(playerAddress);
     const [iron, energy, plasma] = await Promise.all([
       this.getBalance(playerAddress, 'Iron'),
       this.getBalance(playerAddress, 'Energy'),
@@ -93,6 +96,8 @@ export class ResourcesClient {
    *   which the player has not yet established a trustline.
    */
   async findMissingTrustlines(playerAddress: string, issuer: string): Promise<string[]> {
+    validateStellarAddress(playerAddress);
+    validateStellarAddress(issuer);
     const keys = RESOURCE_ASSET_CODES.map((code) => buildTrustlineKey(playerAddress, code, issuer));
     const { entries } = await this.client.server.getLedgerEntries(...keys);
     const existing = new Set(entries.map((entry) => entry.key.toXDR('base64')));
@@ -112,6 +117,8 @@ export class ResourcesClient {
    * @throws If the transaction is rejected or fails on-chain.
    */
   async establishTrustlines(playerAddress: string, issuer: string, sign: TransactionSigner): Promise<void> {
+    validateStellarAddress(playerAddress);
+    validateStellarAddress(issuer);
     const missing = await this.findMissingTrustlines(playerAddress, issuer);
     if (missing.length === 0) {
       return;
@@ -134,6 +141,8 @@ export class ResourcesClient {
    *   transaction fails.
    */
   async upgradeSystem(playerAddress: string, systemId: number, sign: TransactionSigner): Promise<void> {
+    validateStellarAddress(playerAddress);
+    validateNonNegativeInteger(systemId, 'systemId');
     const contract = new Contract(this.client.contractIds.resources);
     await this.client.submitTransaction({
       sourceAddress: playerAddress,

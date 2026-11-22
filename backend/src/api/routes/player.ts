@@ -8,6 +8,7 @@ import {
   fetchNotificationsByPlayer,
 } from '../../db/queries';
 import { parseStellarAddress, validateParam } from '../validators';
+import { addressLimiter } from '../middleware/rateLimit';
 
 export function createPlayerRouter(db: Pool): Router {
   const router = Router();
@@ -15,10 +16,10 @@ export function createPlayerRouter(db: Pool): Router {
   router.param('address', validateParam(parseStellarAddress));
   // Registered before `/:address` so "recent" is never parsed as an address.
   router.get('/recent', fetchRecentPlayers(db));
-  router.get('/:address', fetchPlayerProfile(db));
-  router.get('/:address/battles', fetchPlayerBattleHistory(db));
-  router.get('/:address/alliance', fetchPlayerAlliance(db));
-  router.get('/:address/notifications', fetchPlayerNotifications(db));
+  router.get('/:address', addressLimiter, fetchPlayerProfile(db));
+  router.get('/:address/battles', addressLimiter, fetchPlayerBattleHistory(db));
+  router.get('/:address/alliance', addressLimiter, fetchPlayerAlliance(db));
+  router.get('/:address/notifications', addressLimiter, fetchPlayerNotifications(db));
 
   return router;
 }

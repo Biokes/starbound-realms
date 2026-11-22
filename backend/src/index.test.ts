@@ -94,6 +94,7 @@ async function loadApp() {
 }
 
 beforeEach(() => {
+  vi.stubEnv('DATABASE_URL', 'postgresql://test:test@localhost:5432/test');
   vi.stubEnv('SOROBAN_RPC_URL', 'http://rpc.test');
   vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true })));
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -222,6 +223,30 @@ describe('index.ts app wiring', () => {
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'leaderboard unavailable' });
+  });
+
+  // ── Security headers (#235) ─────────────────────────────────────────────────
+
+  it('includes security headers in responses', async () => {
+    const app = await loadApp();
+
+    const res = await request(app).get('/health');
+
+    expect(res.status).toBe(200);
+    expect(res.headers).toHaveProperty('x-content-type-options', 'nosniff');
+    expect(res.headers).toHaveProperty('x-frame-options');
+    expect(res.headers).toHaveProperty('strict-transport-security');
+  });
+
+  it('sets appropriate CSP for a JSON API', async () => {
+    const app = await loadApp();
+
+    const res = await request(app).get('/health');
+
+    expect(res.status).toBe(200);
+    expect(res.headers).toHaveProperty('content-security-policy');
+    const csp = res.headers['content-security-policy'];
+    expect(csp).toContain("default-src 'none'");
   });
 
   it('does not start the indexer when SOROBAN_RPC_URL is missing', async () => {
