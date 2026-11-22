@@ -87,4 +87,25 @@ describe('startIndexer', () => {
     expect(rpc.Server).toHaveBeenNthCalledWith(1, 'https://rpc', { allowHttp: false });
     expect(rpc.Server).toHaveBeenNthCalledWith(2, 'http://localhost:8000', { allowHttp: true });
   });
+
+  // ── Malformed event resilience (#243) ─────────────────────────────────────
+
+  it('continues indexing after a malformed event causes a decode error', async () => {
+    vi.mocked(fetchIndexerCursor).mockResolvedValue(1);
+    vi.mocked(runIndexerPollCycle)
+      .mockRejectedValueOnce(new Error('decode failed: invalid XDR'))
+      .mockResolvedValueOnce(50);
+
+    const onError = vi.fn();
+    await startIndexer({ db, rpcUrl: 'https://rpc', contractIds, pollIntervalMs: 1000, onError });
+
+    const options = vi.mocked(startEventListener).mock.calls[0][0];
+
+    // First cycle fails due to malformed event
+    await options.runPollCycle(1).catch(() => {});
+
+    // Second cycle succeeds
+    const nextLedger = await options.runPollCycle(1);
+    expect(nextLedger).toBe(50);
+  });
 });

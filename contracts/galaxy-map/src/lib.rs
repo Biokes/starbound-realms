@@ -1288,4 +1288,122 @@ mod tests {
         client.pause(&admin);
         client.upgrade_system(&player, &0);
     }
+
+    // ── Fuzz tests (#241) ─────────────────────────────────────────────────────
+
+    /// Helper to test claim_system across different grid sizes
+    fn test_claim_with_grid_size(grid_size: u32, system_id: u32, should_succeed: bool) {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(GalaxyMapContract, ());
+        let client = GalaxyMapContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let player = Address::generate(&env);
+
+        client.initialize(&admin, &grid_size);
+
+        if should_succeed {
+            client.claim_system(&player, &system_id);
+            assert_eq!(client.get_system(&system_id).owner, Some(player.clone()));
+            let player_systems = client.get_player_systems(&player);
+            assert!(player_systems.iter().any(|&id| id == system_id));
+        } else {
+            // Should panic for out-of-bounds
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                client.claim_system(&player, &system_id);
+            }));
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn fuzz_claim_system_grid_size_1() {
+        // Grid 1x1: only system 0 is valid
+        test_claim_with_grid_size(1, 0, true);
+        test_claim_with_grid_size(1, 1, false);
+        test_claim_with_grid_size(1, 10, false);
+    }
+
+    #[test]
+    fn fuzz_claim_system_grid_size_4() {
+        // Grid 4x4: systems 0-15 are valid
+        test_claim_with_grid_size(4, 0, true);
+        test_claim_with_grid_size(4, 7, true);
+        test_claim_with_grid_size(4, 15, true);
+        test_claim_with_grid_size(4, 16, false);
+        test_claim_with_grid_size(4, 100, false);
+    }
+
+    #[test]
+    fn fuzz_claim_system_grid_size_max() {
+        // Grid MAX_GRID_SIZE x MAX_GRID_SIZE
+        test_claim_with_grid_size(MAX_GRID_SIZE, 0, true);
+        test_claim_with_grid_size(MAX_GRID_SIZE, MAX_GRID_SIZE * MAX_GRID_SIZE / 2, true);
+        test_claim_with_grid_size(MAX_GRID_SIZE, MAX_GRID_SIZE * MAX_GRID_SIZE - 1, true);
+        test_claim_with_grid_size(MAX_GRID_SIZE, MAX_GRID_SIZE * MAX_GRID_SIZE, false);
+    }
+
+    #[test]
+    fn fuzz_claim_system_coordinate_mapping_various_sizes() {
+        // Test coordinate assignment for various grid sizes
+        for grid_size in [1u32, 2, 4, 8, MAX_GRID_SIZE] {
+            let env = Env::default();
+            env.mock_all_auths();
+            let contract_id = env.register(GalaxyMapContract, ());
+            let client = GalaxyMapContractClient::new(&env, &contract_id);
+            let admin = Address::generate(&env);
+
+            client.initialize(&admin, &grid_size);
+
+            let total_systems = grid_size * grid_size;
+
+            // Test first system
+            if total_systems > 0 {
+                let system = client.get_system(&0);
+                assert_eq!(system.coord_x, 0);
+                assert_eq!(system.coord_y, 0);
+            }
+
+            // Test last system
+            if total_systems > 1 {
+                let last_id = total_systems - 1;
+                let system = client.get_system(&last_id);
+                assert_eq!(system.coord_x, last_id % grid_size);
+                assert_eq!(system.coord_y, last_id / grid_size);
+            }
+
+            // Test a middle system
+            if total_systems > 4 {
+                let mid_id = total_systems / 2;
+                let system = client.get_system(&mid_id);
+                assert_eq!(system.coord_x, mid_id % grid_size);
+                assert_eq!(system.coord_y, mid_id / grid_size);
+            }
+        }
+    }
+
+    #[test]
+    fn fuzz_claim_system_double_claim_fails() {
+        // Test that claiming an already-owned system fails across different grid sizes
+        for grid_size in [2u32, 4, 8] {
+            let env = Env::default();
+            env.mock_all_auths();
+            let contract_id = env.register(GalaxyMapContract, ());
+            let client = GalaxyMapContractClient::new(&env, &contract_id);
+            let admin = Address::generate(&env);
+            let player1 = Address::generate(&env);
+            let player2 = Address::generate(&env);
+
+            client.initialize(&admin, &grid_size);
+
+            // First claim succeeds
+            client.claim_system(&player1, &0);
+
+            // Second claim by different player should panic
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                client.claim_system(&player2, &0);
+            }));
+            assert!(result.is_err());
+        }
+    }
 }
