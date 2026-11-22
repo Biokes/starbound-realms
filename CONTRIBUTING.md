@@ -177,10 +177,21 @@ when useful, one type or priority label:
 | Contributor guidance | `good first issue`, `help wanted` |
 
 Area labels identify the code owner; type labels describe the change. Keep
-labels lowercase and do not add duplicates or synonyms. Closed issues should
-be explained in a comment instead of receiving administrative labels such as
-`invalid`, `duplicate`, or `wontfix`; those labels are intentionally not part
-of the project vocabulary.
+labels lowercase and do not add synonyms.
+
+### Triage labels
+
+Triage labels record the state of an issue. Apply them when they are true, and
+remove them once they stop being true.
+
+| Label | Use it when |
+|---|---|
+| `needs-design` | The issue needs a design decision before anyone implements it. Write or link a design proposal in `docs/design/` and resolve its open questions first. Remove the label once the design is agreed. |
+| `blocked` | The issue cannot move forward until something outside it is done, such as another issue, a contract deployment or a decision. Name the blocker in a comment. |
+| `duplicate` | The issue repeats an existing open issue. Comment with the link to the original, then close this issue. |
+
+`duplicate` is the only administrative label in the vocabulary. Do not use
+`invalid` or `wontfix`; explain a closure in a comment instead.
 
 ---
 
