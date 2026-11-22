@@ -16,6 +16,9 @@ export function installFreighterStub(publicKey: string): void {
     const payloads: Record<string, object> = {
       REQUEST_CONNECTION_STATUS: { isConnected: false },
       REQUEST_ACCESS: { publicKey },
+      SIGN_TRANSACTION: {
+        signedXdr: request.payload?.transactionXdr || 'AAAAAgAAAAA...',
+      },
     };
     const payload = payloads[request.type];
     if (!payload) {
