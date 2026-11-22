@@ -267,6 +267,20 @@ Read the full [CONTRIBUTING.md](CONTRIBUTING.md) before opening a PR.
 
 ---
 
+## Documentation
+
+New to the project? Start here:
+
+- **[Game Mechanics](docs/game-mechanics.md)** — How the galaxy, resources, fleets, and battles work
+- **[Economy Explainer](docs/economy-explainer.md)** — Where resources come from and where they go (sources and sinks)
+- **[Testnet vs Mainnet](docs/testnet-vs-mainnet.md)** — Network differences, configuration, and fees
+- **[Wallet Setup Troubleshooting](docs/wallet-setup-troubleshooting.md)** — Common Freighter connection issues and fixes
+- **[Engineering Guidelines](docs/engineering-guidelines.md)** — Code standards, testing, and architecture
+- **[Architecture](docs/architecture.md)** — System design and contract relationships
+- **[Mainnet Migration Plan](docs/mainnet-migration-plan.md)** — Roadmap to production launch
+
+---
+
 ## Roadmap
 
 - [x] Project architecture & design
