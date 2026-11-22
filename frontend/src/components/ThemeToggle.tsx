@@ -1,30 +1,13 @@
-import { useState, useEffect } from 'react';
+import { usePreferences } from '../hooks/usePreferences';
 
-const THEME_KEY = 'starbound-theme';
-
-function getStoredTheme(): 'dark' | 'light' {
-  if (typeof localStorage === 'undefined') return 'dark';
-  const stored = localStorage.getItem(THEME_KEY);
-  return stored === 'light' ? 'light' : 'dark';
-}
-
-/**
- * #124 — Dark/light mode toggle.
- * Switches data-theme attribute and persists choice in localStorage.
- */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(getStoredTheme);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem(THEME_KEY, theme);
-  }, [theme]);
+  const { preferences, setPreferences } = usePreferences();
 
   return (
     <button
       type="button"
-      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-      aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      onClick={() => setPreferences({ theme: preferences.theme === 'dark' ? 'light' : 'dark' })}
+      aria-label={preferences.theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
       style={{
         padding: '0.5rem 1rem',
         borderRadius: 'var(--radius-md)',
@@ -36,7 +19,7 @@ export function ThemeToggle() {
         fontFamily: 'inherit',
       }}
     >
-      {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+      {preferences.theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
     </button>
   );
 }

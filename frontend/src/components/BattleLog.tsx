@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { PlayerBattle } from '../hooks/useBattleHistory';
 import { truncateAddress } from '../lib/format';
 import { LoadingIndicator } from './LoadingIndicator';
+import { useAudio } from '../hooks/useAudio';
 
 const styles: Record<string, React.CSSProperties> = {
   list: {
@@ -67,6 +68,20 @@ export interface BattleLogProps {
  * outcome framed as a victory or defeat for `playerAddress`.
  */
 export function BattleLog({ battles, isLoading, error, playerAddress, onReplay }: BattleLogProps) {
+  const { playSoundEffect } = useAudio();
+  const prevBattleCountRef = React.useRef(battles.length);
+
+  useEffect(() => {
+    if (battles.length > prevBattleCountRef.current) {
+      const newestBattle = battles[0];
+      if (newestBattle && playerAddress) {
+        const won = newestBattle.winner === playerAddress;
+        playSoundEffect(won ? 'victory' : 'defeat');
+      }
+      prevBattleCountRef.current = battles.length;
+    }
+  }, [battles, playerAddress, playSoundEffect]);
+
   if (isLoading) {
     return <LoadingIndicator label="Loading battle history…" />;
   }

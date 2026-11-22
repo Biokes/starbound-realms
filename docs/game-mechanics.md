@@ -117,6 +117,28 @@ a fleet; it never calls into the battle contract.)
 
 ---
 
+## System Upgrades
+
+Star systems can be upgraded to increase their defensive capability using plasma resources.
+
+**Upgrade mechanic:**
+
+When a system is upgraded via `galaxy-map.upgrade_system`, its `upgrade_level` increases by 1. Each upgrade level adds **5 defense points** to the system during combat.
+
+**Formula:**
+```
+system_defense = system.defense_rating + (system.upgrade_level * 5)
+```
+
+**Example:**
+- A system with `defense_rating: 10` and `upgrade_level: 0` has 10 defense points in battle
+- After 1 upgrade: `10 + (1 * 5) = 15` defense points
+- After 2 upgrades: `10 + (2 * 5) = 20` defense points
+
+This scaling ensures that resource investment in system upgrades directly improves defensive performance, creating a resource-to-defense trade-off: players can either spend plasma on upgrades for better defense, or use those resources for fleet building.
+
+---
+
 ## Winning
 
 There is no hard win condition — the galaxy is persistent. Players compete for:

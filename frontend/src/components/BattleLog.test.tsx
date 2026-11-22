@@ -1,7 +1,27 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BattleLog } from './BattleLog';
 import { PlayerBattle } from '../hooks/useBattleHistory';
+
+const mockLocalStorage = (() => {
+  let store: Record<string, string> = {};
+  return {
+    getItem: (key: string) => store[key] || null,
+    setItem: (key: string, value: string) => {
+      store[key] = value.toString();
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      store = {};
+    },
+  };
+})();
+
+Object.defineProperty(global, 'localStorage', {
+  value: mockLocalStorage,
+});
 
 const MY_ADDRESS = 'GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890abcdefghijklmnopqrstuvwx';
 const ENEMY_ADDRESS = 'ZYXWVUTSRQPONMLKJIHGFEDCBA0987654321zyxwvutsrqponmlkjihgfedcba';
@@ -21,6 +41,14 @@ function battle(overrides: Partial<PlayerBattle> = {}): PlayerBattle {
 }
 
 describe('BattleLog', () => {
+  beforeEach(() => {
+    mockLocalStorage.clear();
+  });
+
+  afterEach(() => {
+    mockLocalStorage.clear();
+  });
+
   it('shows a loading message while loading', () => {
     render(<BattleLog battles={[]} isLoading={true} error={null} playerAddress={MY_ADDRESS} />);
 
@@ -129,5 +157,57 @@ describe('BattleLog', () => {
     fireEvent.click(screen.getByRole('button', { name: /replay battle 42/i }));
 
     expect(onReplay).toHaveBeenCalledWith(42);
+  });
+
+  it('plays victory sound when player wins a battle', async () => {
+    mockLocalStorage.setItem('starbound-preferences', JSON.stringify({ soundEffects: true }));
+
+    const { rerender } = render(
+      <BattleLog
+        battles={[]}
+        isLoading={false}
+        error={null}
+        playerAddress={MY_ADDRESS}
+      />
+    );
+
+    rerender(
+      <BattleLog
+        battles={[battle({ battleId: 1, winner: MY_ADDRESS })]}
+        isLoading={false}
+        error={null}
+        playerAddress={MY_ADDRESS}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/victory/i)).toBeInTheDocument();
+    });
+  });
+
+  it('plays defeat sound when player loses a battle', async () => {
+    mockLocalStorage.setItem('starbound-preferences', JSON.stringify({ soundEffects: true }));
+
+    const { rerender } = render(
+      <BattleLog
+        battles={[]}
+        isLoading={false}
+        error={null}
+        playerAddress={MY_ADDRESS}
+      />
+    );
+
+    rerender(
+      <BattleLog
+        battles={[battle({ battleId: 1, winner: ENEMY_ADDRESS })]}
+        isLoading={false}
+        error={null}
+        playerAddress={MY_ADDRESS}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/defeat/i)).toBeInTheDocument();
+    });
   });
 });
