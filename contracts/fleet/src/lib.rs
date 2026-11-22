@@ -359,6 +359,37 @@ impl FleetContract {
         get_stored_fleet(&env, &player)
     }
 
+    /// Returns the total periodic energy upkeep cost for a player's fleet.
+    pub fn get_fleet_upkeep(env: Env, player: Address) -> u32 {
+        let fleet = get_stored_fleet(&env, &player);
+        calculate_fleet_upkeep(&fleet)
+    }
+
+    /// Deducts the periodic energy upkeep cost for a player's fleet.
+    ///
+    /// The player's balance of Energy is burned via the resources contract.
+    /// If the player's balance is insufficient, the resources contract panics,
+    /// aborting the transaction and leaving the player's fleet intact.
+    ///
+    /// # Authorization
+    /// Requires authorization from `player`.
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("upkeep"), player)` with data `(upkeep as i128)`.
+    pub fn deduct_upkeep(env: Env, player: Address) {
+        player.require_auth();
+        require_not_paused(&env);
+
+        let fleet = get_stored_fleet(&env, &player);
+        let upkeep = calculate_fleet_upkeep(&fleet);
+        if upkeep > 0 {
+            burn_upkeep_cost(&env, &player, upkeep as i128);
+        }
+
+        env.events()
+            .publish((symbol_short!("upkeep"), player), upkeep as i128);
+    }
+
     /// Clears a player's fleet and deployment marker before a new season starts.
     ///
     /// This is an admin-only maintenance action used to wipe a player's combat
@@ -425,6 +456,15 @@ pub fn calculate_fleet_attack(fleet: &Fleet) -> u32 {
 /// Returns the fleet's total defense power (sum of each unit's defense stat).
 pub fn calculate_fleet_defense(fleet: &Fleet) -> u32 {
     fleet.scouts + fleet.fighters * 3 + fleet.cruisers * 8 + fleet.dreadnoughts * 20
+}
+
+/// Returns the fleet's periodic energy upkeep cost.
+/// - Scout: 1 Energy
+/// - Fighter: 2 Energy
+/// - Cruiser: 5 Energy
+/// - Dreadnought: 12 Energy
+pub fn calculate_fleet_upkeep(fleet: &Fleet) -> u32 {
+    fleet.scouts * 1 + fleet.fighters * 2 + fleet.cruisers * 5 + fleet.dreadnoughts * 12
 }
 
 fn verify_caller_is_admin(env: &Env, caller: &Address) {
@@ -589,6 +629,17 @@ fn burn_build_cost(env: &Env, player: &Address, cost: &UnitCost) {
     resources.burn(player, &ResourceType::Energy, &cost.energy);
 }
 
+/// Burns the energy upkeep cost from the player via the resources contract.
+fn burn_upkeep_cost(env: &Env, player: &Address, amount: i128) {
+    let resources_addr: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::ResourcesContract)
+        .expect("not initialized");
+    let resources = ResourcesClient::new(env, &resources_addr);
+    resources.burn(player, &ResourceType::Energy, &amount);
+}
+
 /// Cost of building a single unit of the given type.
 fn unit_cost(unit: &UnitType) -> UnitCost {
     match unit {
@@ -621,6 +672,7 @@ fn empty_fleet() -> Fleet {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
     use soroban_sdk::testutils::{Address as _, Events, Ledger as _};
     use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, IntoVal, Vec};
@@ -649,8 +701,24 @@ mod tests {
 
     #[contractimpl]
     impl MockResources {
+        pub fn set_balance(env: Env, account: Address, resource: ResourceType, amount: i128) {
+            env.storage().instance().set(&(account, resource), &amount);
+        }
+
         pub fn burn(env: Env, from: Address, resource: ResourceType, amount: i128) {
             from.require_auth();
+            let balance: Option<i128> = env
+                .storage()
+                .instance()
+                .get(&(from.clone(), resource.clone()));
+            if let Some(bal) = balance {
+                if bal < amount {
+                    panic!("insufficient balance");
+                }
+                env.storage()
+                    .instance()
+                    .set(&(from.clone(), resource.clone()), &(bal - amount));
+            }
             let mut burns: Vec<(Address, ResourceType, i128)> = env
                 .storage()
                 .instance()
@@ -1630,5 +1698,109 @@ mod tests {
         fx.client.pause(&fx.admin);
 
         fx.client.move_fleet(&player, &1);
+    }
+
+    // ── Upkeep tests (#293) ───────────────────────────────────────────────────
+
+    #[test]
+    fn calculate_fleet_upkeep_sums_each_units_upkeep_cost() {
+        let fleet = Fleet {
+            scouts: 3,
+            fighters: 2,
+            cruisers: 1,
+            dreadnoughts: 1,
+            location: 0,
+            last_moved: 0,
+        };
+        // 3*1 + 2*2 + 1*5 + 1*12 = 3 + 4 + 5 + 12 = 24
+        assert_eq!(calculate_fleet_upkeep(&fleet), 24);
+    }
+
+    #[test]
+    fn get_fleet_upkeep_returns_calculated_upkeep_for_the_players_stored_fleet() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = Address::generate(&env);
+
+        fx.client.build_unit(&player, &UnitType::Scout, &2);
+        fx.client.build_unit(&player, &UnitType::Cruiser, &1);
+
+        // 2*1 + 1*5 = 7
+        assert_eq!(fx.client.get_fleet_upkeep(&player), 7);
+    }
+
+    #[test]
+    fn deduct_upkeep_burns_energy_and_emits_event() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = Address::generate(&env);
+
+        fx.client.build_unit(&player, &UnitType::Scout, &2);
+        fx.client.build_unit(&player, &UnitType::Fighter, &1);
+
+        // 2*1 + 1*2 = 4
+        fx.client.deduct_upkeep(&player);
+
+        let (contract, topics, data) = env
+            .events()
+            .all()
+            .into_iter()
+            .filter(|(c, _, _)| *c == fx.client.address)
+            .last()
+            .unwrap();
+        assert_eq!(contract, fx.client.address);
+        assert_eq!(topics, (symbol_short!("upkeep"), player.clone()).into_val(&env));
+        let amount: i128 = data.into_val(&env);
+        assert_eq!(amount, 4i128);
+
+        let burns = fx.resources.burns();
+        assert_eq!(
+            burns.last(),
+            Some((player, ResourceType::Energy, 4i128))
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "insufficient balance")]
+    fn test_deduct_upkeep_panics_on_insufficient_balance_leaving_fleet_intact() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = Address::generate(&env);
+
+        fx.client.build_unit(&player, &UnitType::Scout, &2);
+        fx.client.build_unit(&player, &UnitType::Fighter, &1);
+
+        // Upkeep needed is 4 Energy. Set balance to 3 so burn panics.
+        fx.resources.set_balance(&player, &ResourceType::Energy, &3);
+
+        // This call must panic
+        fx.client.deduct_upkeep(&player);
+    }
+
+    #[test]
+    fn deduct_upkeep_leaves_fleet_intact_when_balance_check_fails() {
+        let env = Env::default();
+        let fx = setup_fleet(&env);
+        let player = Address::generate(&env);
+
+        fx.client.build_unit(&player, &UnitType::Scout, &2);
+        fx.client.build_unit(&player, &UnitType::Fighter, &1);
+
+        let fleet_before = fx.client.get_fleet(&player);
+        assert_eq!(fleet_before.scouts, 2);
+        assert_eq!(fleet_before.fighters, 1);
+
+        // Upkeep needed is 4 Energy. Set balance to 3 so burn panics.
+        fx.resources.set_balance(&player, &ResourceType::Energy, &3);
+
+        // Attempt deduction (which fails and reverts)
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fx.client.deduct_upkeep(&player);
+        }));
+
+        let fleet_after = fx.client.get_fleet(&player);
+        assert_eq!(fleet_after.scouts, 2);
+        assert_eq!(fleet_after.fighters, 1);
+        assert_eq!(fleet_after, fleet_before);
     }
 }

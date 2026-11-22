@@ -11,8 +11,8 @@ export { AllianceClient } from './alliance.js';
 export { ResourcesClient, RESOURCE_ASSET_CODES, buildTrustlineKey } from './resources.js';
 export type { ResourceType, ResourceBalance } from './resources.js';
 
-export { FleetClient, getUnitCost, calculateFleetAttack, calculateFleetDefense, isFleetEmpty } from './fleet.js';
-export type { Fleet, UnitType, UnitCost } from './fleet.js';
+export { FleetClient, getUnitCost, getUnitUpkeep, calculateFleetAttack, calculateFleetDefense, isFleetEmpty } from './fleet.js';
+export type { Fleet, UnitType, UnitCost, UnitUpkeep } from './fleet.js';
 
 export { BattleClient, didAttackerWin, getBattleLoser, wasBattleDecisive } from './battle.js';
 export type { BattleResult, BattleRecord } from './battle.js';

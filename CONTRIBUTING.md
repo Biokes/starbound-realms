@@ -194,6 +194,25 @@ of the project vocabulary.
 
 ---
 
+## Review Assignment & CODEOWNERS
+
+The repository uses [`.github/CODEOWNERS`](.github/CODEOWNERS) to automatically assign code reviews when a Pull Request is opened or modified.
+
+Reviewers are assigned based on the file paths modified in your PR:
+
+| Area | Path Pattern | Code Owner |
+|---|---|---|
+| Smart Contracts | `/contracts/` | `@OlaGreat` |
+| Frontend | `/frontend/` | `@OlaGreat` |
+| Backend & Indexer | `/backend/` | `@OlaGreat` |
+| TypeScript SDK | `/sdk/` | `@OlaGreat` |
+| CI/CD & Workflows | `/.github/` | `@OlaGreat` |
+| Documentation | `/docs/`, `*.md` | `@OlaGreat` |
+
+When you open a PR, GitHub will automatically request review from the code owner responsible for the touched files. You do not need to manually request reviewers. If your PR spans multiple areas (e.g., both contracts and frontend), the assigned owners will cover all modified paths.
+
+---
+
 ## Questions?
 
 Open a [GitHub Discussion](https://github.com/OlaGreat/starbound-realms/discussions) or comment on the issue you're working on.

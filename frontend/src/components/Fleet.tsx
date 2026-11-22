@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Fleet as SdkFleet, UnitType, calculateFleetAttack, calculateFleetDefense, getUnitCost } from '@starbound-realms/sdk';
+import { Fleet as SdkFleet, UnitType, calculateFleetAttack, calculateFleetDefense, getUnitCost, getUnitUpkeep } from '@starbound-realms/sdk';
 
 const UNIT_TYPES: UnitType[] = ['Scout', 'Fighter', 'Cruiser', 'Dreadnought'];
 
@@ -85,6 +85,7 @@ export function Fleet({ fleet, onBuildUnit }: FleetProps) {
   }
 
   const cost = getUnitCost(unitType);
+  const upkeep = getUnitUpkeep(unitType);
 
   return (
     <div style={styles.panel}>
@@ -146,6 +147,9 @@ export function Fleet({ fleet, onBuildUnit }: FleetProps) {
 
           <span style={styles.cost}>
             Cost: {Number(cost.iron) * count} Iron, {Number(cost.energy) * count} Energy
+          </span>
+          <span style={styles.cost}>
+            Upkeep: {Number(upkeep.energy) * count} Energy / period
           </span>
 
           <button style={styles.buildButton} onClick={() => onBuildUnit(unitType, count)}>
