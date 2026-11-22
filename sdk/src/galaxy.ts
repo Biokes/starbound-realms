@@ -84,6 +84,34 @@ export class GalaxyClient {
   }
 
   /**
+   * Fetch one page of system IDs owned by a player.
+   *
+   * @param playerAddress - The Stellar address of the player.
+   * @param offset - Index of the first system to return.
+   * @param pageSize - Maximum number of IDs to return.
+   * @returns Up to `pageSize` system IDs starting at `offset`. Empty past the end.
+   */
+  async getPlayerSystemsPage(
+    playerAddress: string,
+    offset: number,
+    pageSize: number,
+  ): Promise<number[]> {
+    validateStellarAddress(playerAddress);
+    validateNonNegativeInteger(offset, 'offset');
+    validateNonNegativeInteger(pageSize, 'pageSize');
+    const args = [
+      nativeToScVal(playerAddress, { type: 'address' }),
+      nativeToScVal(offset, { type: 'u32' }),
+      nativeToScVal(pageSize, { type: 'u32' }),
+    ];
+    return this.client.simulateReadCall(
+      this.client.contractIds.galaxyMap,
+      'get_player_systems_page',
+      args,
+    );
+  }
+
+  /**
    * Fetch the galaxy grid size.
    *
    * @returns The `grid_size` the galaxy was initialized with. The total number

@@ -16,6 +16,7 @@ import {
   saveGalaxyEvent,
   insertTradeOffer,
   acceptTradeOffer,
+  setStarSystemUpgradeLevel,
 } from '../db/queries';
 
 export interface ContractEvent {
@@ -64,6 +65,9 @@ export async function processEvent(
     case 'losses':
       await processFleetLosses(db, event);
       break;
+    case 'system_abandoned':
+      await processSystemAbandoned(db, event);
+      break;
     case 'alliance_created':
       await processAllianceCreated(db, event);
       break;
@@ -90,6 +94,9 @@ export async function processEvent(
       break;
     case 'trade_accepted':
       await processTradeAccepted(db, event);
+      break;
+    case 'upgraded':
+      await processSystemUpgraded(db, event);
       break;
     default:
       // Unknown event — skip silently
@@ -122,6 +129,16 @@ async function processTradeOfferClosed(
   await updateTradeOfferStatus(db, getTradeOfferId(event), status);
 }
 
+/**
+ * Handles upgraded event (#296). The galaxy-map contract publishes
+ * `("upgraded", player)` with the value `(system_id, next_level, cost)`.
+ * Only the stored level changes; ownership and owned-system counts do not.
+ */
+async function processSystemUpgraded(db: Pool, event: ContractEvent): Promise<void> {
+  const [systemId, nextLevel] = event.value;
+  await setStarSystemUpgradeLevel(db, Number(systemId), Number(nextLevel));
+}
+
 /** Handles system_claimed event — updates star_systems and player stats */
 async function processSystemClaimed(db: Pool, event: ContractEvent): Promise<void> {
   const player = event.topic[1];
@@ -129,6 +146,15 @@ async function processSystemClaimed(db: Pool, event: ContractEvent): Promise<voi
 
   await upsertStarSystem(db, systemId, player, event.ledgerSequence);
   await incrementPlayerSystemsOwned(db, player);
+}
+
+/** Handles system_abandoned event: clears the owner and decrements the abandoning player's count */
+async function processSystemAbandoned(db: Pool, event: ContractEvent): Promise<void> {
+  const player = event.topic[1];
+  const systemId = Number(event.value);
+
+  await upsertStarSystem(db, systemId, null, event.ledgerSequence);
+  await decrementPlayerSystemsOwned(db, player);
 }
 
 /** Handles ownership_transferred event — updates both old and new owner stats */

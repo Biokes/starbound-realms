@@ -112,3 +112,19 @@ describe('claimSystem', () => {
     expect(options.sign).toBe(sign);
   });
 });
+
+describe('getPlayerSystemsPage', () => {
+  it('calls get_player_systems_page with the address, offset and page size', async () => {
+    const simulateReadCall = vi.fn().mockResolvedValue([5, 9]);
+    const galaxy = new GalaxyClient(makeClient({ simulateReadCall }));
+
+    const page = await galaxy.getPlayerSystemsPage(PLAYER, 2, 2);
+
+    expect(page).toEqual([5, 9]);
+    expect(simulateReadCall).toHaveBeenCalledWith(GALAXY_MAP, 'get_player_systems_page', [
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    ]);
+  });
+});
