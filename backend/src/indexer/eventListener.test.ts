@@ -60,6 +60,30 @@ describe('decodeContractEvents', () => {
   it('decodes an empty list to an empty list', () => {
     expect(decodeContractEvents([])).toEqual([]);
   });
+
+  // ── Malformed event handling (#243) ───────────────────────────────────────
+
+  it('handles events with missing contractId gracefully', () => {
+    const malformedEvent = makeRawEvent({ contractId: undefined });
+    const [decoded] = decodeContractEvents([malformedEvent]);
+    expect(decoded.contractId).toBe('');
+  });
+
+  it('handles events with malformed topic values', () => {
+    // Test with empty topic array
+    const emptyTopicEvent = makeRawEvent({ topic: [] });
+    const [decoded] = decodeContractEvents([emptyTopicEvent]);
+    expect(decoded.topic).toEqual([]);
+  });
+
+  it('decodes events with unexpected value types without throwing', () => {
+    // Event with a complex nested structure as value
+    const complexValueEvent = makeRawEvent({
+      value: nativeToScVal({ nested: { field: 'value' } }, { type: 'map' }),
+    });
+    const [decoded] = decodeContractEvents([complexValueEvent]);
+    expect(decoded.value).toBeDefined();
+  });
 });
 
 // ── fetchContractEvents ──────────────────────────────────────────────────────
@@ -150,6 +174,27 @@ describe('startEventListener', () => {
     await vi.advanceTimersByTimeAsync(1000);
     expect(onError).toHaveBeenCalledTimes(1);
 
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(runPollCycle).toHaveBeenCalledTimes(2);
+
+    vi.useRealTimers();
+  });
+
+  // ── Malformed event handling (#243) ───────────────────────────────────────
+
+  it('skips malformed events without crashing the indexer loop', async () => {
+    const onError = vi.fn();
+    const runPollCycle = vi.fn()
+      .mockRejectedValueOnce(new Error('invalid event: missing topic'))
+      .mockResolvedValueOnce(11);
+
+    startEventListener({ runPollCycle, startLedger: 1, pollIntervalMs: 1000, onError });
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('invalid event') }));
+
+    // Loop continues after the error
     await vi.advanceTimersByTimeAsync(1000);
     expect(runPollCycle).toHaveBeenCalledTimes(2);
 
