@@ -65,6 +65,21 @@ jobs:
       - name: Run lint
         run: pnpm lint
 
+  # ── Secret scanning (#239) ──────────────────────────────────────────────────
+  secret-scan:
+    name: Secret Scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
   # ── Dependency audit (#100) ─────────────────────────────────────────────────
   audit:
     name: Dependency Audit
@@ -125,7 +140,7 @@ jobs:
       - name: Cache Rust build (#99)
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: ". -> target"
+          workspaces: '. -> target'
 
       - name: Check Rust formatting
         run: cargo fmt --all -- --check
