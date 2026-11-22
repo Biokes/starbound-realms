@@ -20,6 +20,23 @@ paths:
                 properties:
                   status: { type: string, example: ok }
                   timestamp: { type: string, format: date-time }
+        '503': { description: A dependency is degraded }
+  /health/liveness:
+    get:
+      summary: Check that the process is up
+      responses:
+        '200': { description: Process is running }
+  /health/readiness:
+    get:
+      summary: Check that the database is reachable
+      responses:
+        '200': { description: API is ready to serve requests }
+        '503': { description: Database is unreachable }
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      responses:
+        '200': { description: Metrics in Prometheus text format }
   /galaxy:
     get:
       summary: List star systems
@@ -54,6 +71,10 @@ paths:
                 properties: { system: { $ref: '#/components/schemas/StarSystem' } }
         '404': { description: System not found }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /player/recent:
+    get:
+      summary: List recently active players
+      responses: { '200': { description: Recently active players } }
   /player/{address}:
     get:
       summary: Get a player profile
@@ -61,14 +82,74 @@ paths:
       responses:
         '200': { description: Player profile }
         '404': { description: Player not found }
+  /player/{address}/battles:
+    get:
+      summary: List a player's battle history
+      parameters: [{ name: address, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: Battles involving the player } }
+  /player/{address}/alliance:
+    get:
+      summary: Get a player's alliance
+      parameters: [{ name: address, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Alliance membership }
+        '404': { description: Player is not in an alliance }
+  /player/{address}/notifications:
+    get:
+      summary: List a player's notifications
+      parameters: [{ name: address, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: Notifications for the player } }
   /battles:
     get:
       summary: List recent battles
       responses: { '200': { description: Recent battles } }
+  /battles/{battleId}:
+    get:
+      summary: Get one battle
+      parameters: [{ name: battleId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Battle }
+        '404': { description: Battle not found }
+  /battles/{battleId}/replay:
+    get:
+      summary: Get the round-by-round replay of a battle
+      parameters: [{ name: battleId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Battle replay }
+        '404': { description: Battle not found }
+  /fleet/{address}:
+    get:
+      summary: Get a player's fleet
+      parameters: [{ name: address, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Player fleet }
+        '404': { description: Player not found }
   /leaderboard:
     get:
       summary: Get the player leaderboard
       responses: { '200': { description: Ranked players } }
+  /trades:
+    get:
+      summary: List open trade offers
+      responses: { '200': { description: Open trade offers } }
+    post:
+      summary: Create a trade offer
+      responses:
+        '201': { description: Trade offer created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /trades/{offerId}/accept:
+    post:
+      summary: Accept a trade offer
+      parameters: [{ name: offerId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: Trade offer accepted }
+        '400': { description: Caller is the offer's creator }
+        '404': { description: Trade offer not found }
+        '409': { description: Offer is no longer open }
+  /events:
+    get:
+      summary: List game events
+      responses: { '200': { description: Game events } }
 components:
   responses:
     BadRequest:
