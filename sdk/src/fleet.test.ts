@@ -208,3 +208,133 @@ describe('FleetClient.moveFleet', () => {
     expect(args[1]).toBe(4);
   });
 });
+
+// ── Property-based tests: fleet combat math ──────────────────────────────────
+
+const UNIT_KEYS = ['scouts', 'fighters', 'cruisers', 'dreadnoughts'] as const;
+type UnitKey = (typeof UNIT_KEYS)[number];
+
+const ATTACK_PER_UNIT: Record<UnitKey, number> = {
+  scouts: 2,
+  fighters: 5,
+  cruisers: 12,
+  dreadnoughts: 30,
+};
+const DEFENSE_PER_UNIT: Record<UnitKey, number> = {
+  scouts: 1,
+  fighters: 3,
+  cruisers: 8,
+  dreadnoughts: 20,
+};
+
+/** How many random fleets each property is checked against. */
+const PROPERTY_RUNS = 200;
+
+/**
+ * Deterministic PRNG (mulberry32). A fixed seed means every run checks the same
+ * fleets, so a failing property can be reproduced exactly.
+ */
+function seededRandom(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** A fleet holding 0–50 of each unit type. */
+function randomFleet(random: () => number): Fleet {
+  const count = () => Math.floor(random() * 51);
+  return {
+    ...emptyFleet(),
+    scouts: count(),
+    fighters: count(),
+    cruisers: count(),
+    dreadnoughts: count(),
+  };
+}
+
+function scaleFleet(fleet: Fleet, factor: number): Fleet {
+  return {
+    ...fleet,
+    scouts: fleet.scouts * factor,
+    fighters: fleet.fighters * factor,
+    cruisers: fleet.cruisers * factor,
+    dreadnoughts: fleet.dreadnoughts * factor,
+  };
+}
+
+function mergeFleets(a: Fleet, b: Fleet): Fleet {
+  return {
+    ...a,
+    scouts: a.scouts + b.scouts,
+    fighters: a.fighters + b.fighters,
+    cruisers: a.cruisers + b.cruisers,
+    dreadnoughts: a.dreadnoughts + b.dreadnoughts,
+  };
+}
+
+function withOneMore(fleet: Fleet, unit: UnitKey): Fleet {
+  return { ...fleet, [unit]: fleet[unit] + 1 };
+}
+
+describe('fleet combat math — property checks', () => {
+  it('attack and defense are never negative', () => {
+    const random = seededRandom(1);
+    for (let i = 0; i < PROPERTY_RUNS; i++) {
+      const fleet = randomFleet(random);
+      expect(calculateFleetAttack(fleet)).toBeGreaterThanOrEqual(0);
+      expect(calculateFleetDefense(fleet)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('attack and defense are zero exactly when the fleet is empty', () => {
+    const random = seededRandom(2);
+    for (let i = 0; i < PROPERTY_RUNS; i++) {
+      const fleet = randomFleet(random);
+      const empty = isFleetEmpty(fleet);
+      expect(calculateFleetAttack(fleet) === 0).toBe(empty);
+      expect(calculateFleetDefense(fleet) === 0).toBe(empty);
+    }
+  });
+
+  it('attack and defense scale linearly with unit count', () => {
+    const random = seededRandom(3);
+    for (let i = 0; i < PROPERTY_RUNS; i++) {
+      const fleet = randomFleet(random);
+      const factor = 1 + Math.floor(random() * 10);
+      const scaled = scaleFleet(fleet, factor);
+      expect(calculateFleetAttack(scaled)).toBe(calculateFleetAttack(fleet) * factor);
+      expect(calculateFleetDefense(scaled)).toBe(calculateFleetDefense(fleet) * factor);
+    }
+  });
+
+  it('attack and defense are additive across fleets', () => {
+    const random = seededRandom(4);
+    for (let i = 0; i < PROPERTY_RUNS; i++) {
+      const a = randomFleet(random);
+      const b = randomFleet(random);
+      const merged = mergeFleets(a, b);
+      const attackSum = calculateFleetAttack(a) + calculateFleetAttack(b);
+      const defenseSum = calculateFleetDefense(a) + calculateFleetDefense(b);
+      expect(calculateFleetAttack(merged)).toBe(attackSum);
+      expect(calculateFleetDefense(merged)).toBe(defenseSum);
+    }
+  });
+
+  it("adding one unit raises attack and defense by exactly that unit type's stats", () => {
+    const random = seededRandom(5);
+    for (let i = 0; i < PROPERTY_RUNS; i++) {
+      const fleet = randomFleet(random);
+      const unit = UNIT_KEYS[Math.floor(random() * UNIT_KEYS.length)];
+      const next = withOneMore(fleet, unit);
+      const attackGain = calculateFleetAttack(next) - calculateFleetAttack(fleet);
+      const defenseGain = calculateFleetDefense(next) - calculateFleetDefense(fleet);
+      expect(attackGain).toBe(ATTACK_PER_UNIT[unit]);
+      expect(defenseGain).toBe(DEFENSE_PER_UNIT[unit]);
+    }
+  });
+});

@@ -71,6 +71,10 @@ pnpm test:e2e
 
 Playwright starts the Vite dev server on port 5173 itself, and reuses one that is already running locally. CI runs the same suite in the `E2E (Playwright)` job.
 
+Screenshot baselines in `visual-regression.spec.ts` are specific to the operating system that rendered them. Regenerate them on Linux, the CI runner or a Playwright Docker image, rather than on macOS: `pnpm exec playwright test visual-regression --update-snapshots`.
+
+`game-loop.testnet.spec.ts` drives a real claim, build, move and battle on testnet. It is skipped unless `E2E_TESTNET=1` and `E2E_MOVE_TARGET` are set, and it needs a signed-in Freighter wallet. See the comment at the top of the file.
+
 ---
 
 ## Branch Naming
