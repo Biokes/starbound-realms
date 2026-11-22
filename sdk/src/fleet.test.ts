@@ -3,6 +3,7 @@ import { decodeInvokeArgs } from './xdr.testutil.js';
 import { Keypair, scValToNative, StrKey } from '@stellar/stellar-sdk';
 import {
   getUnitCost,
+  getUnitUpkeep,
   calculateFleetAttack,
   calculateFleetDefense,
   isFleetEmpty,
@@ -36,6 +37,30 @@ describe('getUnitCost', () => {
     const cost = getUnitCost('Dreadnought');
     expect(cost.iron).toBe(150n);
     expect(cost.energy).toBe(100n);
+  });
+});
+
+// ── getUnitUpkeep ─────────────────────────────────────────────────────────────
+
+describe('getUnitUpkeep', () => {
+  it('returns correct upkeep for Scout', () => {
+    const upkeep = getUnitUpkeep('Scout');
+    expect(upkeep.energy).toBe(1n);
+  });
+
+  it('returns correct upkeep for Fighter', () => {
+    const upkeep = getUnitUpkeep('Fighter');
+    expect(upkeep.energy).toBe(2n);
+  });
+
+  it('returns correct upkeep for Cruiser', () => {
+    const upkeep = getUnitUpkeep('Cruiser');
+    expect(upkeep.energy).toBe(5n);
+  });
+
+  it('returns correct upkeep for Dreadnought', () => {
+    const upkeep = getUnitUpkeep('Dreadnought');
+    expect(upkeep.energy).toBe(12n);
   });
 });
 

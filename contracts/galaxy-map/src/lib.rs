@@ -203,6 +203,9 @@ impl GalaxyMapContract {
     }
 
     /// Upgrade a system's defense by one level, costing 100 * (level + 1) Plasma.
+    ///
+    /// # Events
+    /// Emits `(symbol_short!("upgraded"), player)` with payload `(system_id, next_level, cost)`.
     pub fn upgrade_system(env: Env, player: Address, system_id: u32) {
         player.require_auth();
         require_not_paused(&env);
@@ -618,6 +621,7 @@ fn remove_system_from_player_list(env: &Env, player: &Address, system_id: u32) {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
     use soroban_sdk::testutils::{Address as _, Events, Ledger as _};
     use soroban_sdk::{Env, IntoVal};
@@ -1266,7 +1270,29 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "system is not owned by the caller")]
+    fn test_upgrade_system_emits_upgraded_event() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+
+        client.claim_system(&player, &0);
+        client.upgrade_system(&player, &0);
+
+        let (contract, topics, data) = env
+            .events()
+            .all()
+            .into_iter()
+            .filter(|(c, _, _)| *c == client.address)
+            .last()
+            .unwrap();
+        assert_eq!(contract, client.address);
+        assert_eq!(topics, (symbol_short!("upgraded"), player.clone()).into_val(&env));
+        let payload: (u32, u32, u128) = data.into_val(&env);
+        assert_eq!(payload, (0, 1, 100u128));
+    }
+
+    #[test]
+    #[should_panic(expected = "caller is not the system owner")]
     fn test_upgrade_system_panics_for_non_owner() {
         let env = Env::default();
         let (client, _) = setup_galaxy(&env);
@@ -1306,7 +1332,7 @@ mod tests {
             client.claim_system(&player, &system_id);
             assert_eq!(client.get_system(&system_id).owner, Some(player.clone()));
             let player_systems = client.get_player_systems(&player);
-            assert!(player_systems.iter().any(|&id| id == system_id));
+            assert!(player_systems.iter().any(|id| id == system_id));
         } else {
             // Should panic for out-of-bounds
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

@@ -58,6 +58,23 @@ describe('Fleet', () => {
     expect(screen.getByText(/120 Energy/)).toBeInTheDocument();
   });
 
+  it('shows the upkeep cost for the selected unit type', () => {
+    render(<FleetComponent fleet={makeFleet()} onBuildUnit={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/unit type/i), { target: { value: 'Cruiser' } });
+
+    expect(screen.getByText(/5 Energy \/ period/)).toBeInTheDocument();
+  });
+
+  it('scales the displayed upkeep by the entered count', () => {
+    render(<FleetComponent fleet={makeFleet()} onBuildUnit={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText(/unit type/i), { target: { value: 'Cruiser' } });
+    fireEvent.change(screen.getByLabelText(/count/i), { target: { value: '3' } });
+
+    expect(screen.getByText(/15 Energy \/ period/)).toBeInTheDocument();
+  });
+
   it('clamps the count input to a minimum of 1', () => {
     const onBuildUnit = vi.fn();
     render(<FleetComponent fleet={makeFleet()} onBuildUnit={onBuildUnit} />);

@@ -34,6 +34,27 @@ export function getUnitCost(unit: UnitType): UnitCost {
   return costs[unit];
 }
 
+export interface UnitUpkeep {
+  energy: bigint;
+}
+
+/**
+ * Returns the upkeep cost per period for a given unit type.
+ *
+ * @param unit - The type of unit to look up upkeep for.
+ * @returns A {@link UnitUpkeep} with the NRGY required per period for one unit.
+ */
+export function getUnitUpkeep(unit: UnitType): UnitUpkeep {
+  const upkeep: Record<UnitType, UnitUpkeep> = {
+    Scout:        { energy: 1n },
+    Fighter:      { energy: 2n },
+    Cruiser:      { energy: 5n },
+    Dreadnought:  { energy: 12n },
+  };
+  return upkeep[unit];
+}
+
+
 /**
  * Returns total attack power of a fleet.
  *
