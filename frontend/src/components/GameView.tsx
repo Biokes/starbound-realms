@@ -7,6 +7,7 @@ import { useRecentBattles } from '../hooks/useRecentBattles';
 import { useTrustlines } from '../hooks/useTrustlines';
 import { usePlayerProfile } from '../hooks/usePlayerProfile';
 import { useBattleHistory } from '../hooks/useBattleHistory';
+import { useMainnetConfirmation } from '../hooks/useMainnetConfirmation';
 import { GalaxyMap } from './GalaxyMap';
 import { StarSystem } from './StarSystem';
 import { Fleet } from './Fleet';
@@ -18,6 +19,7 @@ import { BattleLog } from './BattleLog';
 import { ResourceSetupBanner } from './ResourceSetupBanner';
 import { GalaxyEmptyState } from './GalaxyEmptyState';
 import { LoadingIndicator } from './LoadingIndicator';
+import { MainnetConfirmationDialog } from './MainnetConfirmationDialog';
 import { useNotification } from './Notifications';
 import { getStarboundClient } from '../lib/starboundClient';
 import { readStoredSystemId, storeSystemId, clearStoredSystemId } from '../lib/selectedSystemStorage';
@@ -63,6 +65,9 @@ export interface GameViewProps {
  * it can be tested in isolation without a real Freighter or Soroban node.
  */
 export function GameView({ walletAddress, signTransaction, backendUrl }: GameViewProps) {
+  const { signTransactionWithConfirmation, pendingConfirmation, confirmTransaction, cancelTransaction } =
+    useMainnetConfirmation(signTransaction);
+
   const { systems, isLoading: galaxyLoading, error: galaxyError, refetch: refetchGalaxy } =
     useGalaxyData(backendUrl);
 
@@ -118,14 +123,16 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
       try {
         const client = getStarboundClient();
         const galaxy = new GalaxyClient(client);
-        await galaxy.claimSystem(walletAddress, systemId, (xdr) => signTransaction(xdr, client.networkPassphrase));
+        await galaxy.claimSystem(walletAddress, systemId, (xdr) => 
+          signTransactionWithConfirmation(xdr, client.networkPassphrase, 'Claim System')
+        );
         await refetchGalaxy();
         clearSelection();
       } catch (err) {
         setClaimError(err instanceof Error ? err.message : String(err));
       }
     },
-    [walletAddress, signTransaction, refetchGalaxy, clearSelection]
+    [walletAddress, signTransactionWithConfirmation, refetchGalaxy, clearSelection]
   );
 
   const { fleet, isLoading: fleetLoading, error: fleetError, refetch: refetchFleet } =
@@ -155,14 +162,14 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
         const client = getStarboundClient();
         const fleetClient = new FleetClient(client);
         await fleetClient.buildUnit(walletAddress, unitType, count, (xdr) =>
-          signTransaction(xdr, client.networkPassphrase)
+          signTransactionWithConfirmation(xdr, client.networkPassphrase, `Build ${count} ${unitType}`)
         );
         await Promise.all([refetchFleet(), refetchBalances()]);
       } catch (err) {
         setBuildError(err instanceof Error ? err.message : String(err));
       }
     },
-    [walletAddress, signTransaction, refetchFleet, refetchBalances]
+    [walletAddress, signTransactionWithConfirmation, refetchFleet, refetchBalances]
   );
 
   const [moveError, setMoveError] = useState<string | null>(null);
@@ -174,7 +181,7 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
         const client = getStarboundClient();
         const fleetClient = new FleetClient(client);
         await fleetClient.moveFleet(walletAddress, targetSystemId, (xdr) =>
-          signTransaction(xdr, client.networkPassphrase)
+          signTransactionWithConfirmation(xdr, client.networkPassphrase, `Move Fleet to System ${targetSystemId}`)
         );
         await refetchFleet();
         clearSelection();
@@ -182,7 +189,7 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
         setMoveError(err instanceof Error ? err.message : String(err));
       }
     },
-    [walletAddress, signTransaction, refetchFleet, clearSelection]
+    [walletAddress, signTransactionWithConfirmation, refetchFleet, clearSelection]
   );
 
   const [attackError, setAttackError] = useState<string | null>(null);
@@ -200,7 +207,7 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
         const client = getStarboundClient();
         const battleClient = new BattleClient(client);
         const battleId = await battleClient.resolveBattle(walletAddress, defender, systemId, (xdr) =>
-          signTransaction(xdr, client.networkPassphrase)
+          signTransactionWithConfirmation(xdr, client.networkPassphrase, `Attack System ${systemId}`)
         );
         const battle = await battleClient.getBattle(battleId);
         setBattleResult(
@@ -214,7 +221,7 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
         setAttackError(err instanceof Error ? err.message : String(err));
       }
     },
-    [walletAddress, systems, signTransaction, refetchFleet, refetchGalaxy, clearSelection]
+    [walletAddress, systems, signTransactionWithConfirmation, refetchFleet, refetchGalaxy, clearSelection]
   );
 
   useNotification(trustlineError);
@@ -228,6 +235,15 @@ export function GameView({ walletAddress, signTransaction, backendUrl }: GameVie
 
   return (
     <>
+      {/* Mainnet confirmation dialog */}
+      {pendingConfirmation && (
+        <MainnetConfirmationDialog
+          action={pendingConfirmation.action}
+          onConfirm={confirmTransaction}
+          onCancel={cancelTransaction}
+        />
+      )}
+
       {/* Galaxy map section */}
       <section style={styles.galaxySection}>
         {trustlinesLoading ? (
