@@ -9,6 +9,7 @@ import { createFleetRouter } from './api/routes/fleet';
 import { createLeaderboardRouter } from './api/routes/leaderboard';
 import { createTradeRouter } from './api/routes/trade';
 import { createEventsRouter } from './api/routes/events';
+import { createMetricsHandler, recordHttpRequest, recordHttpDuration } from './api/routes/metrics';
 import { standardLimiter, strictLimiter } from './api/middleware/rateLimit';
 import { errorHandler } from './api/middleware/errorHandler';
 import { startIndexer } from './indexer/indexer';
@@ -66,7 +67,7 @@ if (corsOrigins) {
 }
 
 app.use(express.json());
-app.use(requestLogger());
+app.use(requestLogger({ recordHttpRequest, recordHttpDuration }));
 app.use(standardLimiter);
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -74,6 +75,7 @@ app.use(standardLimiter);
 app.get('/health/liveness', (req, res) => handleLivenessCheck(req, res));
 app.get('/health/readiness', (req, res) => void handleReadinessCheck(req, res, db));
 app.get('/health', (req, res) => void handleHealthCheck(req, res, db));
+app.get('/metrics', createMetricsHandler(db));
 app.use('/galaxy', createGalaxyRouter(db));
 app.use('/player', createPlayerRouter(db));
 app.use('/battles', createBattleRouter(db));
