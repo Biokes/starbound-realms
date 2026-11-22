@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useStellar } from './hooks/useStellar';
 import { useLeaderboard } from './hooks/useLeaderboard';
 import { useRecentlyActivePlayers } from './hooks/useRecentlyActivePlayers';
-import { NetworkBadge } from './components/NetworkBadge';
-import { ThemeToggle } from './components/ThemeToggle';
+import { SettingsPanel } from './components/SettingsPanel';
 import { GameView } from './components/GameView';
 import { Leaderboard } from './components/Leaderboard';
 import { RecentlyActivePlayers } from './components/RecentlyActivePlayers';
@@ -276,8 +275,7 @@ function AppContent() {
         <span style={styles.navLogo}>{t('nav.brand')}</span>
         <ul style={styles.navLinks}>
           <li>
-            <NetworkBadge network={NETWORK_LABEL} />
-            <ThemeToggle />
+            <SettingsPanel network={NETWORK_LABEL} />
           </li>
           <li>
             <button
