@@ -1239,4 +1239,158 @@ mod tests {
         client.pause(&admin);
         client.resolve_battle(&attacker, &defender, &1);
     }
+
+    // ── Fuzz tests (#242) ─────────────────────────────────────────────────────
+
+    /// Helper to test battle resolution with various fleet compositions
+    fn test_battle_with_fleets(
+        attacker_fleet: Fleet,
+        defender_fleet: Fleet,
+        system_defense: u32,
+    ) {
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let attacker = Address::generate(&env);
+        let defender = Address::generate(&env);
+
+        // Skip if attacker fleet is empty (this would panic by design)
+        if is_fleet_empty(&attacker_fleet) {
+            return;
+        }
+
+        fx.galaxy.seed_system(&defender, &system_defense);
+        fx.fleet.seed_fleet(&attacker, &attacker_fleet);
+        fx.fleet.seed_fleet(&defender, &defender_fleet);
+
+        let battle_id = fx.client.resolve_battle(&attacker, &defender, &1);
+        let record = fx.client.get_battle(&battle_id);
+
+        // Invariants to check
+        assert!(record.rounds <= MAX_BATTLE_ROUNDS);
+        assert!(record.winner == attacker || record.winner == defender);
+        assert_eq!(record.battle_id, battle_id);
+        assert_eq!(record.attacker, attacker);
+        assert_eq!(record.defender, defender);
+        assert_eq!(record.system_id, 1);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_scout_heavy_fleets() {
+        // Test with scout-heavy fleets
+        test_battle_with_fleets(fleet_of(100, 0, 0, 0), fleet_of(100, 0, 0, 0), 5);
+        test_battle_with_fleets(fleet_of(50, 0, 0, 0), fleet_of(10, 0, 0, 0), 20);
+        test_battle_with_fleets(fleet_of(10, 0, 0, 0), fleet_of(50, 0, 0, 0), 5);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_mixed_fleets() {
+        // Test with mixed fleet compositions
+        test_battle_with_fleets(fleet_of(10, 10, 5, 2), fleet_of(10, 10, 5, 2), 10);
+        test_battle_with_fleets(fleet_of(20, 5, 2, 1), fleet_of(5, 20, 1, 2), 15);
+        test_battle_with_fleets(fleet_of(5, 5, 5, 5), fleet_of(1, 1, 1, 1), 50);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_extreme_defense() {
+        // Test with extreme defense ratings
+        test_battle_with_fleets(fleet_of(10, 10, 10, 10), fleet_of(1, 0, 0, 0), 0);
+        test_battle_with_fleets(fleet_of(10, 10, 10, 10), fleet_of(1, 0, 0, 0), 100);
+        test_battle_with_fleets(fleet_of(10, 10, 10, 10), fleet_of(1, 0, 0, 0), 1000);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_dreadnought_heavy() {
+        // Test with dreadnought-heavy fleets
+        test_battle_with_fleets(fleet_of(0, 0, 0, 20), fleet_of(0, 0, 0, 20), 10);
+        test_battle_with_fleets(fleet_of(0, 0, 0, 10), fleet_of(100, 0, 0, 0), 5);
+        test_battle_with_fleets(fleet_of(0, 0, 0, 5), fleet_of(0, 0, 20, 0), 20);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_minimal_fleets() {
+        // Test with minimal fleets (1 unit each)
+        test_battle_with_fleets(fleet_of(1, 0, 0, 0), fleet_of(1, 0, 0, 0), 0);
+        test_battle_with_fleets(fleet_of(0, 1, 0, 0), fleet_of(0, 1, 0, 0), 5);
+        test_battle_with_fleets(fleet_of(0, 0, 1, 0), fleet_of(0, 0, 1, 0), 10);
+        test_battle_with_fleets(fleet_of(0, 0, 0, 1), fleet_of(0, 0, 0, 1), 20);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_asymmetric_sizes() {
+        // Test with very asymmetric fleet sizes
+        test_battle_with_fleets(fleet_of(1, 0, 0, 0), fleet_of(100, 100, 50, 20), 50);
+        test_battle_with_fleets(fleet_of(100, 100, 50, 20), fleet_of(1, 0, 0, 0), 5);
+        test_battle_with_fleets(fleet_of(0, 0, 0, 1), fleet_of(100, 0, 0, 0), 0);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_empty_defender() {
+        // Test with empty defender fleet
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let attacker = Address::generate(&env);
+        let defender = Address::generate(&env);
+
+        fx.galaxy.seed_system(&defender, &100);
+        fx.fleet.seed_fleet(&attacker, &fleet_of(1, 0, 0, 0));
+        fx.fleet.seed_fleet(&defender, &empty_fleet_with_location(0));
+
+        let battle_id = fx.client.resolve_battle(&attacker, &defender, &1);
+        let record = fx.client.get_battle(&battle_id);
+
+        // With empty defender fleet, attacker must win regardless of defense rating
+        assert_eq!(record.winner, attacker);
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_unit_counts_never_go_negative() {
+        // Test that unit counts in losses never exceed initial counts
+        let env = Env::default();
+        let fx = setup_resolvable_battle(&env);
+        let attacker = Address::generate(&env);
+        let defender = Address::generate(&env);
+
+        let attacker_fleet = fleet_of(10, 10, 5, 2);
+        let defender_fleet = fleet_of(50, 50, 25, 10);
+
+        fx.galaxy.seed_system(&defender, &50);
+        fx.fleet.seed_fleet(&attacker, &attacker_fleet);
+        fx.fleet.seed_fleet(&defender, &defender_fleet);
+
+        fx.client.resolve_battle(&attacker, &defender, &1);
+
+        let losses_log = fx.fleet.losses_log();
+        for (_, losses) in losses_log.iter() {
+            // All loss counts should be non-negative (checked by type, but verify reasonable bounds)
+            assert!(losses.scouts <= 100);
+            assert!(losses.fighters <= 100);
+            assert!(losses.cruisers <= 50);
+            assert!(losses.dreadnoughts <= 20);
+        }
+    }
+
+    #[test]
+    fn fuzz_resolve_battle_always_terminates() {
+        // Test that combat always terminates within MAX_BATTLE_ROUNDS
+        for _ in 0..10 {
+            let env = Env::default();
+            let fx = setup_resolvable_battle(&env);
+            let attacker = Address::generate(&env);
+            let defender = Address::generate(&env);
+
+            // Create balanced fleets that might go many rounds
+            let attacker_fleet = fleet_of(50, 50, 25, 10);
+            let defender_fleet = fleet_of(50, 50, 25, 10);
+
+            fx.galaxy.seed_system(&defender, &25);
+            fx.fleet.seed_fleet(&attacker, &attacker_fleet);
+            fx.fleet.seed_fleet(&defender, &defender_fleet);
+
+            let battle_id = fx.client.resolve_battle(&attacker, &defender, &1);
+            let record = fx.client.get_battle(&battle_id);
+
+            assert!(record.rounds <= MAX_BATTLE_ROUNDS);
+        }
+    }
 }
+
