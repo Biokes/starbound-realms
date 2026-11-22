@@ -12,6 +12,7 @@ vi.mock('../db/queries', () => ({
   addAllianceMember: vi.fn(),
   removeAllianceMember: vi.fn(),
   createNotification: vi.fn(),
+  setStarSystemUpgradeLevel: vi.fn(),
 }));
 
 import {
@@ -26,6 +27,7 @@ import {
   addAllianceMember,
   removeAllianceMember,
   createNotification,
+  setStarSystemUpgradeLevel,
 } from '../db/queries';
 import { processEvent, ContractEvent } from './processor';
 
@@ -43,6 +45,37 @@ beforeEach(() => {
   vi.mocked(addAllianceMember).mockClear();
   vi.mocked(removeAllianceMember).mockClear();
   vi.mocked(createNotification).mockClear();
+});
+
+describe('processEvent — upgraded (#296)', () => {
+  it('stores the new upgrade level from the (system_id, next_level, cost) payload', async () => {
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['upgraded', 'GPLAYER'],
+      value: [7, 2, 200],
+      ledgerSequence: 101,
+    };
+
+    await processEvent(db, event);
+
+    expect(setStarSystemUpgradeLevel).toHaveBeenCalledTimes(1);
+    expect(setStarSystemUpgradeLevel).toHaveBeenCalledWith(db, 7, 2);
+  });
+
+  it('does not change ownership or owned-system counts', async () => {
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['upgraded', 'GPLAYER'],
+      value: [7, 1, 100],
+      ledgerSequence: 102,
+    };
+
+    await processEvent(db, event);
+
+    expect(upsertStarSystem).not.toHaveBeenCalled();
+    expect(incrementPlayerSystemsOwned).not.toHaveBeenCalled();
+    expect(decrementPlayerSystemsOwned).not.toHaveBeenCalled();
+  });
 });
 
 describe('processEvent — claimed', () => {
