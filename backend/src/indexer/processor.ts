@@ -16,6 +16,7 @@ import {
   saveGalaxyEvent,
   insertTradeOffer,
   acceptTradeOffer,
+  setStarSystemUpgradeLevel,
 } from '../db/queries';
 
 export interface ContractEvent {
@@ -91,6 +92,9 @@ export async function processEvent(
     case 'trade_accepted':
       await processTradeAccepted(db, event);
       break;
+    case 'upgraded':
+      await processSystemUpgraded(db, event);
+      break;
     default:
       // Unknown event — skip silently
       return;
@@ -120,6 +124,16 @@ async function processTradeOfferClosed(
   status: 'accepted' | 'cancelled'
 ): Promise<void> {
   await updateTradeOfferStatus(db, getTradeOfferId(event), status);
+}
+
+/**
+ * Handles upgraded event (#296). The galaxy-map contract publishes
+ * `("upgraded", player)` with the value `(system_id, next_level, cost)`.
+ * Only the stored level changes; ownership and owned-system counts do not.
+ */
+async function processSystemUpgraded(db: Pool, event: ContractEvent): Promise<void> {
+  const [systemId, nextLevel] = event.value;
+  await setStarSystemUpgradeLevel(db, Number(systemId), Number(nextLevel));
 }
 
 /** Handles system_claimed event — updates star_systems and player stats */

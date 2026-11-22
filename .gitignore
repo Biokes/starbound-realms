@@ -54,3 +54,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# ── Database backups (#298) ──────────────────────────────────────────────────
+backups/
+*.dump
+*.dump.partial

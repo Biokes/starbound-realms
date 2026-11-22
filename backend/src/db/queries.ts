@@ -35,6 +35,16 @@ export async function upsertStarSystem(
 
 // ── Players ───────────────────────────────────────────────────────────────────
 
+/** Stores a system's upgrade level from the galaxy-map `upgraded` event (#296). */
+export async function setStarSystemUpgradeLevel(db: Pool, systemId: number, level: number) {
+  await db.query(
+    `UPDATE star_systems
+     SET upgrade_level = $2, updated_at = NOW()
+     WHERE system_id = $1`,
+    [systemId, level]
+  );
+}
+
 export async function fetchPlayerByAddress(db: Pool, address: string) {
   const result = await db.query(
     'SELECT * FROM players WHERE address = $1',
