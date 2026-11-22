@@ -202,6 +202,32 @@ impl GalaxyMapContract {
         );
     }
 
+    /// Abandon a system you own, leaving it unclaimed.
+    ///
+    /// Clears the owner, removes the system from your list and emits a
+    /// `system_abandoned` event so the indexer can mark the system unclaimed.
+    pub fn abandon_system(env: Env, player: Address, system_id: u32) {
+        player.require_auth();
+        require_not_paused(&env);
+
+        let mut system: StarSystem = env
+            .storage()
+            .persistent()
+            .get(&DataKey::System(system_id))
+            .expect("system not found");
+
+        verify_system_is_owned_by(&system, &player);
+
+        system.owner = None;
+        env.storage()
+            .persistent()
+            .set(&DataKey::System(system_id), &system);
+
+        remove_system_from_player_list(&env, &player, system_id);
+
+        env.events().publish((Symbol::new(&env, "system_abandoned"), player), system_id);
+    }
+
     /// Upgrade a system's defense by one level, costing 100 * (level + 1) Plasma.
     pub fn upgrade_system(env: Env, player: Address, system_id: u32) {
         player.require_auth();
@@ -367,6 +393,26 @@ impl GalaxyMapContract {
             .persistent()
             .get(&DataKey::PlayerSystems(player))
             .unwrap_or(vec![&env])
+    }
+
+    /// Return one page of a player's system IDs, in the order they were acquired.
+    ///
+    /// Returns up to `page_size` IDs starting at index `offset`. An `offset` at or
+    /// past the end, or a `page_size` of zero, returns an empty list. Use this for
+    /// players whose full list is too large for a single `get_player_systems` call.
+    pub fn get_player_systems_page(
+        env: Env,
+        player: Address,
+        offset: u32,
+        page_size: u32,
+    ) -> Vec<u32> {
+        let systems = get_player_system_list(&env, &player);
+        let mut page = Vec::new(&env);
+        let end = offset.saturating_add(page_size).min(systems.len());
+        for index in offset..end {
+            page.push_back(systems.get(index).unwrap());
+        }
+        page
     }
 
     pub fn get_grid_size(env: Env) -> u32 {
@@ -733,6 +779,165 @@ mod tests {
         assert_eq!(topics, (symbol_short!("transfer"), 3u32).into_val(&env));
         let payload: (Option<Address>, Address) = data.into_val(&env);
         assert_eq!(payload, (Some(owner), new_owner));
+    }
+
+    #[test]
+    fn abandon_system_clears_owner() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        client.claim_system(&owner, &3);
+
+        client.abandon_system(&owner, &3);
+
+        assert_eq!(client.get_system(&3).owner, None);
+    }
+
+    #[test]
+    fn abandon_system_removes_system_from_player_list() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        client.claim_system(&owner, &3);
+
+        client.abandon_system(&owner, &3);
+
+        assert_eq!(client.get_player_systems(&owner).len(), 0);
+    }
+
+    #[test]
+    fn abandon_system_emits_system_abandoned_event() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        client.claim_system(&owner, &3);
+
+        client.abandon_system(&owner, &3);
+
+        let (contract, topics, data) = env.events().all().last().unwrap();
+        assert_eq!(contract, client.address);
+        assert_eq!(topics, (Symbol::new(&env, "system_abandoned"), owner).into_val(&env));
+        let system_id: u32 = data.into_val(&env);
+        assert_eq!(system_id, 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "caller is not the system owner")]
+    fn abandon_system_panics_when_caller_is_not_owner() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        let intruder = Address::generate(&env);
+        client.claim_system(&owner, &3);
+
+        client.abandon_system(&intruder, &3);
+    }
+
+    #[test]
+    #[should_panic(expected = "system is not owned")]
+    fn abandon_system_panics_when_system_is_unclaimed() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+
+        client.abandon_system(&player, &3);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract is paused")]
+    fn abandon_system_panics_when_contract_is_paused() {
+        let env = Env::default();
+        let (client, admin) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        client.claim_system(&owner, &3);
+        client.pause(&admin);
+
+        client.abandon_system(&owner, &3);
+    }
+
+    #[test]
+    fn abandoned_system_can_be_claimed_again() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let owner = Address::generate(&env);
+        let next = Address::generate(&env);
+        client.claim_system(&owner, &3);
+        client.abandon_system(&owner, &3);
+
+        client.claim_system(&next, &3);
+
+        assert_eq!(client.get_system(&3).owner, Some(next));
+    }
+
+    #[test]
+    fn get_player_systems_page_returns_first_page() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+        client.claim_system(&player, &2);
+        client.claim_system(&player, &5);
+        client.claim_system(&player, &7);
+
+        assert_eq!(client.get_player_systems_page(&player, &0, &2), vec![&env, 2u32, 5u32]);
+    }
+
+    #[test]
+    fn get_player_systems_page_returns_remaining_systems() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+        client.claim_system(&player, &2);
+        client.claim_system(&player, &5);
+        client.claim_system(&player, &7);
+
+        assert_eq!(client.get_player_systems_page(&player, &2, &2), vec![&env, 7u32]);
+    }
+
+    #[test]
+    fn get_player_systems_page_is_empty_past_the_end() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+        client.claim_system(&player, &2);
+
+        assert!(client.get_player_systems_page(&player, &5, &2).is_empty());
+    }
+
+    #[test]
+    fn get_player_systems_page_is_empty_for_zero_page_size() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+        client.claim_system(&player, &2);
+
+        assert!(client.get_player_systems_page(&player, &0, &0).is_empty());
+    }
+
+    #[test]
+    fn get_player_systems_pages_cover_the_full_list() {
+        let env = Env::default();
+        let (client, _) = setup_galaxy(&env);
+        let player = Address::generate(&env);
+        client.claim_system(&player, &2);
+        client.claim_system(&player, &5);
+        client.claim_system(&player, &7);
+        client.claim_system(&player, &9);
+        client.claim_system(&player, &11);
+
+        let mut collected = Vec::new(&env);
+        let mut offset: u32 = 0;
+        loop {
+            let page = client.get_player_systems_page(&player, &offset, &2);
+            if page.is_empty() {
+                break;
+            }
+            for id in page.iter() {
+                collected.push_back(id);
+            }
+            offset += 2;
+        }
+
+        assert_eq!(collected, client.get_player_systems(&player));
     }
 
     #[test]

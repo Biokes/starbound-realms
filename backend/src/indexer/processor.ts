@@ -65,6 +65,9 @@ export async function processEvent(
     case 'losses':
       await processFleetLosses(db, event);
       break;
+    case 'system_abandoned':
+      await processSystemAbandoned(db, event);
+      break;
     case 'alliance_created':
       await processAllianceCreated(db, event);
       break;
@@ -143,6 +146,15 @@ async function processSystemClaimed(db: Pool, event: ContractEvent): Promise<voi
 
   await upsertStarSystem(db, systemId, player, event.ledgerSequence);
   await incrementPlayerSystemsOwned(db, player);
+}
+
+/** Handles system_abandoned event: clears the owner and decrements the abandoning player's count */
+async function processSystemAbandoned(db: Pool, event: ContractEvent): Promise<void> {
+  const player = event.topic[1];
+  const systemId = Number(event.value);
+
+  await upsertStarSystem(db, systemId, null, event.ledgerSequence);
+  await decrementPlayerSystemsOwned(db, player);
 }
 
 /** Handles ownership_transferred event — updates both old and new owner stats */

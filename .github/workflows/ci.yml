@@ -353,3 +353,44 @@ jobs:
           name: playwright-report
           path: frontend/playwright-report/
           retention-days: 7
+
+  a11y:
+    name: Accessibility Audit (axe-core)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+        working-directory: frontend
+
+      - name: Build sdk
+        # The app imports the SDK's built dist, which is gitignored (see frontend job).
+        run: pnpm run build
+        working-directory: sdk
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: frontend
+
+      - name: Run axe-core audit
+        run: pnpm exec playwright test a11y
+        working-directory: frontend
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-report
+          path: frontend/playwright-report/
+          retention-days: 7

@@ -544,3 +544,32 @@ describe('processEvent — broadcast callback', () => {
     await expect(processEvent(db, event)).resolves.toBeUndefined();
   });
 });
+
+describe('processEvent — system_abandoned', () => {
+  it('clears the owner of the star system', async () => {
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['system_abandoned', 'GPLAYER'],
+      value: 7,
+      ledgerSequence: 300,
+    };
+
+    await processEvent(db, event);
+
+    expect(upsertStarSystem).toHaveBeenCalledWith(db, 7, null, 300);
+  });
+
+  it('decrements the systems owned count of the abandoning player', async () => {
+    const event: ContractEvent = {
+      contractId: 'C1',
+      topic: ['system_abandoned', 'GPLAYER'],
+      value: 7,
+      ledgerSequence: 300,
+    };
+
+    await processEvent(db, event);
+
+    expect(decrementPlayerSystemsOwned).toHaveBeenCalledWith(db, 'GPLAYER');
+    expect(incrementPlayerSystemsOwned).not.toHaveBeenCalled();
+  });
+});
